@@ -16,10 +16,10 @@ export class Torneo {
   deporte!: string;
 
   @Column({ type: "date" })
-  fechaInicio!: Date;
+  fechaInicio!: string;
 
   @Column({ type: "date" })
-  fechaFin!: Date;
+  fechaFin!: string;
 
   @Column({ type: "varchar", length: 20, default: "PROGRAMADO" })
   estado!: string;

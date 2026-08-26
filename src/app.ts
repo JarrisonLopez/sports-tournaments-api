@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import { torneoRoutes } from "./routes/torneo.routes";
 
 export function buildApp() {
   const app = Fastify({
@@ -10,6 +11,8 @@ export function buildApp() {
       message: "API de Torneos Deportivos funcionando",
     };
   });
+
+  app.register(torneoRoutes);
 
   return app;
 }
