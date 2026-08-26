@@ -54,4 +54,33 @@ export async function canchaRoutes(app: FastifyInstance) {
 
     return reply.code(200).send(cancha);
   });
+
+  // Actualizar una cancha
+  app.patch("/canchas/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const cancha = await canchaRepository.findOneBy({
+      id: Number(id),
+    });
+
+    if (!cancha) {
+      return reply.code(404).send({
+        message: "Cancha no encontrada",
+      });
+    }
+
+    const datos = request.body as {
+      nombre?: string;
+      ubicacion?: string;
+      tipoSuperficie?: string;
+      disponible?: boolean;
+    };
+
+    canchaRepository.merge(cancha, datos);
+
+    const canchaActualizada = await canchaRepository.save(cancha);
+
+    return reply.code(200).send(canchaActualizada);
+  });
+  
 }
