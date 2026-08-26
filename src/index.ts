@@ -1,14 +1,6 @@
-import Fastify from "fastify";
+import { buildApp } from "./app";
 
-const app = Fastify({
-  logger: true,
-});
-
-app.get("/", async () => {
-  return {
-    message: "API de Torneos Deportivos funcionando",
-  };
-});
+const app = buildApp();
 
 const start = async () => {
   try {
