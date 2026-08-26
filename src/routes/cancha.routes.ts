@@ -30,4 +30,11 @@ export async function canchaRoutes(app: FastifyInstance) {
 
     return reply.code(201).send(canchaGuardada);
   });
+
+  // Consultar todas las canchas
+  app.get("/canchas", async (_request, reply) => {
+    const canchas = await canchaRepository.find();
+
+    return reply.code(200).send(canchas);
+  });
 }
