@@ -57,4 +57,33 @@ export async function torneoRoutes(app: FastifyInstance) {
 
     return reply.code(200).send(torneo);
   });
+
+  // Actualizar un torneo
+  app.patch("/torneos/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const torneo = await torneoRepository.findOneBy({
+      id: Number(id),
+    });
+
+    if (!torneo) {
+      return reply.code(404).send({
+        message: "Torneo no encontrado",
+      });
+    }
+
+    const datos = request.body as {
+      nombre?: string;
+      deporte?: string;
+      fechaInicio?: string;
+      fechaFin?: string;
+      estado?: string;
+    };
+
+    torneoRepository.merge(torneo, datos);
+
+    const torneoActualizado = await torneoRepository.save(torneo);
+
+    return reply.code(200).send(torneoActualizado);
+  });
 }
