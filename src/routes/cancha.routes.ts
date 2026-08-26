@@ -31,9 +31,21 @@ export async function canchaRoutes(app: FastifyInstance) {
     return reply.code(201).send(canchaGuardada);
   });
 
-  // Consultar todas las canchas
-  app.get("/canchas", async (_request, reply) => {
-    const canchas = await canchaRepository.find();
+  // Consultar todas las canchas y permitir filtros
+  app.get("/canchas", async (request, reply) => {
+    const { tipoSuperficie, disponible } = request.query as {
+      tipoSuperficie?: string;
+      disponible?: string;
+    };
+
+    const canchas = await canchaRepository.find({
+      where: {
+        ...(tipoSuperficie && { tipoSuperficie }),
+        ...(disponible !== undefined && {
+          disponible: disponible === "true",
+        }),
+      },
+    });
 
     return reply.code(200).send(canchas);
   });
