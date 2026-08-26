@@ -82,5 +82,26 @@ export async function canchaRoutes(app: FastifyInstance) {
 
     return reply.code(200).send(canchaActualizada);
   });
-  
+
+  // Eliminar una cancha
+  app.delete("/canchas/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const cancha = await canchaRepository.findOneBy({
+      id: Number(id),
+    });
+
+    if (!cancha) {
+      return reply.code(404).send({
+        message: "Cancha no encontrada",
+      });
+    }
+
+    await canchaRepository.remove(cancha);
+
+    return reply.code(200).send({
+      message: "Cancha eliminada correctamente",
+    });
+  });
+
 }
