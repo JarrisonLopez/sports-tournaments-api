@@ -86,4 +86,25 @@ export async function torneoRoutes(app: FastifyInstance) {
 
     return reply.code(200).send(torneoActualizado);
   });
+
+  // Eliminar un torneo
+  app.delete("/torneos/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const torneo = await torneoRepository.findOneBy({
+      id: Number(id),
+    });
+
+    if (!torneo) {
+      return reply.code(404).send({
+        message: "Torneo no encontrado",
+      });
+    }
+
+    await torneoRepository.remove(torneo);
+
+    return reply.code(200).send({
+      message: "Torneo eliminado correctamente",
+    });
+  });
 }
