@@ -34,9 +34,19 @@ export async function torneoRoutes(app: FastifyInstance) {
     return reply.code(201).send(torneoGuardado);
   });
 
-  // Consultar todos los torneos
-  app.get("/torneos", async (_request, reply) => {
-    const torneos = await torneoRepository.find();
+  // Consultar todos los torneos y permitir filtros
+  app.get("/torneos", async (request, reply) => {
+    const { deporte, estado } = request.query as {
+      deporte?: string;
+      estado?: string;
+    };
+
+    const torneos = await torneoRepository.find({
+      where: {
+        ...(deporte && { deporte }),
+        ...(estado && { estado }),
+      },
+    });
 
     return reply.code(200).send(torneos);
   });
