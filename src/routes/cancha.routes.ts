@@ -37,4 +37,21 @@ export async function canchaRoutes(app: FastifyInstance) {
 
     return reply.code(200).send(canchas);
   });
+
+  // Consultar una cancha por ID
+  app.get("/canchas/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const cancha = await canchaRepository.findOneBy({
+      id: Number(id),
+    });
+
+    if (!cancha) {
+      return reply.code(404).send({
+        message: "Cancha no encontrada",
+      });
+    }
+
+    return reply.code(200).send(cancha);
+  });
 }
