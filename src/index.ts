@@ -1,9 +1,14 @@
 import { buildApp } from "./app";
+import { AppDataSource } from "./config/database";
 
 const app = buildApp();
 
 const start = async () => {
   try {
+    await AppDataSource.initialize();
+
+    app.log.info("Base de datos conectada");
+
     await app.listen({
       port: 3000,
       host: "0.0.0.0",
