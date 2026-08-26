@@ -5,6 +5,7 @@ import { Torneo } from "../entities/Torneo";
 export async function torneoRoutes(app: FastifyInstance) {
   const torneoRepository = AppDataSource.getRepository(Torneo);
 
+  // Crear un torneo
   app.post("/torneos", async (request, reply) => {
     const {
       nombre,
@@ -31,5 +32,12 @@ export async function torneoRoutes(app: FastifyInstance) {
     const torneoGuardado = await torneoRepository.save(torneo);
 
     return reply.code(201).send(torneoGuardado);
+  });
+
+  // Consultar todos los torneos
+  app.get("/torneos", async (_request, reply) => {
+    const torneos = await torneoRepository.find();
+
+    return reply.code(200).send(torneos);
   });
 }
