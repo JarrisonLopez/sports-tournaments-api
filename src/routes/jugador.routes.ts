@@ -83,4 +83,25 @@ export async function jugadorRoutes(app: FastifyInstance) {
     return reply.code(200).send(jugadorActualizado);
   });
 
+  // Eliminar un jugador
+  app.delete("/jugadores/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const jugador = await jugadorRepository.findOneBy({
+      id: Number(id),
+    });
+
+    if (!jugador) {
+      return reply.code(404).send({
+        message: "Jugador no encontrado",
+      });
+    }
+
+    await jugadorRepository.remove(jugador);
+
+    return reply.code(200).send({
+      message: "Jugador eliminado correctamente",
+    });
+  });
+
 }
