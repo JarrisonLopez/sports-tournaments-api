@@ -55,4 +55,32 @@ export async function jugadorRoutes(app: FastifyInstance) {
     return reply.code(200).send(jugador);
   });
 
+  // Actualizar un jugador
+  app.patch("/jugadores/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const jugador = await jugadorRepository.findOneBy({
+      id: Number(id),
+    });
+
+    if (!jugador) {
+      return reply.code(404).send({
+        message: "Jugador no encontrado",
+      });
+    }
+
+    const datos = request.body as {
+      nombre?: string;
+      documento?: string;
+      fechaNacimiento?: string;
+      posicion?: string;
+    };
+
+    jugadorRepository.merge(jugador, datos);
+
+    const jugadorActualizado = await jugadorRepository.save(jugador);
+
+    return reply.code(200).send(jugadorActualizado);
+  });
+
 }
