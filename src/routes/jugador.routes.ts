@@ -31,9 +31,19 @@ export async function jugadorRoutes(app: FastifyInstance) {
     return reply.code(201).send(jugadorGuardado);
   });
 
-  // Consultar todos los jugadores
-  app.get("/jugadores", async (_request, reply) => {
-    const jugadores = await jugadorRepository.find();
+  // Consultar todos los jugadores y permitir filtros
+  app.get("/jugadores", async (request, reply) => {
+    const { nombre, posicion } = request.query as {
+      nombre?: string;
+      posicion?: string;
+    };
+
+    const jugadores = await jugadorRepository.find({
+      where: {
+        ...(nombre && { nombre }),
+        ...(posicion && { posicion }),
+      },
+    });
 
     return reply.code(200).send(jugadores);
   });
