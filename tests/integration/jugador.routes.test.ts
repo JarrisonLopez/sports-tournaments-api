@@ -174,4 +174,105 @@ describe("Pruebas de integración de jugadores", () => {
 
     await app.close();
   });
+
+  it("debe devolver 404 al actualizar un jugador que no existe", async () => {
+    const app = Fastify();
+
+    jugadorRepositoryMock.findOneBy.mockResolvedValue(null);
+
+    await app.register(jugadorRoutes);
+
+    const respuesta = await app.inject({
+      method: "PATCH",
+      url: "/jugadores/999",
+      payload: {
+        posicion: "Mediocampista",
+      },
+    });
+
+    expect(respuesta.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("debe devolver 404 al eliminar un jugador que no existe", async () => {
+    const app = Fastify();
+
+    jugadorRepositoryMock.findOneBy.mockResolvedValue(null);
+
+    await app.register(jugadorRoutes);
+
+    const respuesta = await app.inject({
+      method: "DELETE",
+      url: "/jugadores/999",
+    });
+
+    expect(respuesta.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("debe filtrar jugadores por nombre", async () => {
+    const app = Fastify();
+
+    jugadorRepositoryMock.find.mockResolvedValue([
+      {
+        id: 1,
+        nombre: "Juan Perez",
+        documento: "1000123456",
+        fechaNacimiento: "2002-05-15",
+        posicion: "Delantero",
+      },
+    ]);
+
+    await app.register(jugadorRoutes);
+
+    const respuesta = await app.inject({
+      method: "GET",
+      url: "/jugadores?nombre=Juan%20Perez",
+    });
+
+    expect(respuesta.statusCode).toBe(200);
+
+    expect(jugadorRepositoryMock.find).toHaveBeenCalledWith({
+      where: {
+        nombre: "Juan Perez",
+      },
+    });
+
+    await app.close();
+  });
+
+  it("debe filtrar jugadores por nombre y posicion", async () => {
+    const app = Fastify();
+
+    jugadorRepositoryMock.find.mockResolvedValue([
+      {
+        id: 1,
+        nombre: "Juan Perez",
+        documento: "1000123456",
+        fechaNacimiento: "2002-05-15",
+        posicion: "Delantero",
+      },
+    ]);
+
+    await app.register(jugadorRoutes);
+
+    const respuesta = await app.inject({
+      method: "GET",
+      url: "/jugadores?nombre=Juan%20Perez&posicion=Delantero",
+    });
+
+    expect(respuesta.statusCode).toBe(200);
+
+    expect(jugadorRepositoryMock.find).toHaveBeenCalledWith({
+      where: {
+        nombre: "Juan Perez",
+        posicion: "Delantero",
+      },
+    });
+
+    await app.close();
+  });
+
 });

@@ -174,4 +174,105 @@ describe("Pruebas de integración de canchas", () => {
 
     await app.close();
   });
+
+  it("debe devolver 404 al actualizar una cancha que no existe", async () => {
+    const app = Fastify();
+
+    canchaRepositoryMock.findOneBy.mockResolvedValue(null);
+
+    await app.register(canchaRoutes);
+
+    const respuesta = await app.inject({
+      method: "PATCH",
+      url: "/canchas/999",
+      payload: {
+        disponible: false,
+      },
+    });
+
+    expect(respuesta.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("debe devolver 404 al eliminar una cancha que no existe", async () => {
+    const app = Fastify();
+
+    canchaRepositoryMock.findOneBy.mockResolvedValue(null);
+
+    await app.register(canchaRoutes);
+
+    const respuesta = await app.inject({
+      method: "DELETE",
+      url: "/canchas/999",
+    });
+
+    expect(respuesta.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("debe filtrar canchas por tipo de superficie", async () => {
+    const app = Fastify();
+
+    canchaRepositoryMock.find.mockResolvedValue([
+      {
+        id: 1,
+        nombre: "Cancha Principal",
+        ubicacion: "Unidad Deportiva",
+        tipoSuperficie: "Sintetica",
+        disponible: true,
+      },
+    ]);
+
+    await app.register(canchaRoutes);
+
+    const respuesta = await app.inject({
+      method: "GET",
+      url: "/canchas?tipoSuperficie=Sintetica",
+    });
+
+    expect(respuesta.statusCode).toBe(200);
+
+    expect(canchaRepositoryMock.find).toHaveBeenCalledWith({
+      where: {
+        tipoSuperficie: "Sintetica",
+      },
+    });
+
+    await app.close();
+  });
+
+  it("debe filtrar canchas por tipo de superficie y disponibilidad", async () => {
+    const app = Fastify();
+
+    canchaRepositoryMock.find.mockResolvedValue([
+      {
+        id: 1,
+        nombre: "Cancha Principal",
+        ubicacion: "Unidad Deportiva",
+        tipoSuperficie: "Sintetica",
+        disponible: true,
+      },
+    ]);
+
+    await app.register(canchaRoutes);
+
+    const respuesta = await app.inject({
+      method: "GET",
+      url: "/canchas?tipoSuperficie=Sintetica&disponible=true",
+    });
+
+    expect(respuesta.statusCode).toBe(200);
+
+    expect(canchaRepositoryMock.find).toHaveBeenCalledWith({
+      where: {
+        tipoSuperficie: "Sintetica",
+        disponible: true,
+      },
+    });
+
+    await app.close();
+  });
+
 });

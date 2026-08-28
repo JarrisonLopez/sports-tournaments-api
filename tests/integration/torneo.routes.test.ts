@@ -175,4 +175,103 @@ describe("Pruebas de integración de torneos", () => {
 
     await app.close();
   });
+
+  it("debe devolver 404 al actualizar un torneo que no existe", async () => {
+    const app = Fastify();
+
+    torneoRepositoryMock.findOneBy.mockResolvedValue(null);
+
+    await app.register(torneoRoutes);
+
+    const respuesta = await app.inject({
+      method: "PATCH",
+      url: "/torneos/999",
+      payload: {
+        estado: "EN CURSO",
+      },
+    });
+
+    expect(respuesta.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("debe devolver 404 al eliminar un torneo que no existe", async () => {
+    const app = Fastify();
+
+    torneoRepositoryMock.findOneBy.mockResolvedValue(null);
+
+    await app.register(torneoRoutes);
+
+    const respuesta = await app.inject({
+      method: "DELETE",
+      url: "/torneos/999",
+    });
+
+    expect(respuesta.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("debe filtrar torneos por deporte", async () => {
+    const app = Fastify();
+
+    torneoRepositoryMock.find.mockResolvedValue([
+      {
+        id: 1,
+        nombre: "Torneo de Futbol",
+        deporte: "Futbol",
+        estado: "PROGRAMADO",
+      },
+    ]);
+
+    await app.register(torneoRoutes);
+
+    const respuesta = await app.inject({
+      method: "GET",
+      url: "/torneos?deporte=Futbol",
+    });
+
+    expect(respuesta.statusCode).toBe(200);
+
+    expect(torneoRepositoryMock.find).toHaveBeenCalledWith({
+      where: {
+        deporte: "Futbol",
+      },
+    });
+
+    await app.close();
+  });
+
+  it("debe filtrar torneos por deporte y estado", async () => {
+    const app = Fastify();
+
+    torneoRepositoryMock.find.mockResolvedValue([
+      {
+        id: 1,
+        nombre: "Torneo de Futbol",
+        deporte: "Futbol",
+        estado: "PROGRAMADO",
+      },
+    ]);
+
+    await app.register(torneoRoutes);
+
+    const respuesta = await app.inject({
+      method: "GET",
+      url: "/torneos?deporte=Futbol&estado=PROGRAMADO",
+    });
+
+    expect(respuesta.statusCode).toBe(200);
+
+    expect(torneoRepositoryMock.find).toHaveBeenCalledWith({
+      where: {
+        deporte: "Futbol",
+        estado: "PROGRAMADO",
+      },
+    });
+
+    await app.close();
+  });
+
 });
