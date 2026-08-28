@@ -16,5 +16,33 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
 
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: sports-api
+    restart: unless-stopped
+
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: sports_user
+      DB_PASSWORD: sports_password
+      DB_NAME: sports_db
+
+    ports:
+      - "3000:3000"
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+
 volumes:
   mysql_data:
