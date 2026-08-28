@@ -285,7 +285,7 @@ El despliegue solo debe ejecutarse cuando las etapas anteriores hayan finalizado
 
 ## ☁️ Ambientes
 
-El proyecto está diseñado para utilizar dos ambientes independientes:
+El proyecto cuenta con dos ambientes independientes desplegados en Railway:
 
 | Característica | Testing | Production |
 |---|---|---|
@@ -295,9 +295,11 @@ El proyecto está diseñado para utilizar dos ambientes independientes:
 | API | Independiente | Independiente |
 | Base de datos | MySQL Testing | MySQL Production |
 | Variables/secrets | Independientes | Independientes |
-| URL | Pendiente de despliegue | Pendiente de despliegue |
+| URL | https://sports-tournaments-api-testing.up.railway.app | https://sports-tournaments-api-production.up.railway.app |
 
-El despliegue en nube se configurará mediante Railway.
+Cada ambiente cuenta con su propio servicio de API y su propia instancia de MySQL en Railway.
+
+Railway está integrado con GitHub y configurado para esperar la finalización exitosa de los checks de CI antes de realizar el despliegue correspondiente.
 
 ## 📂 Estructura principal
 
