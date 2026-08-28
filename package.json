@@ -6,7 +6,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:coverage:testing": "vitest run --coverage --config vitest.testing.config.mts",
+    "test:coverage:production": "vitest run --coverage --config vitest.production.config.mts"
   },
   "keywords": [],
   "author": "",
