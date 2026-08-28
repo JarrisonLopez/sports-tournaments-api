@@ -10,6 +10,7 @@ jobs:
   production:
     name: Build, Tests and Production Coverage
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Checkout repository
