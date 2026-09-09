@@ -6,10 +6,22 @@ import { Torneo } from "../entities/Torneo";
 import { Cancha } from "../entities/Cancha";
 import { Jugador } from "../entities/Jugador";
 
+const cloudSqlConnectionName = process.env.CLOUD_SQL_CONNECTION_NAME;
+
 export const AppDataSource = new DataSource({
   type: "mysql",
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT),
+
+  ...(cloudSqlConnectionName
+    ? {
+        extra: {
+          socketPath: `/cloudsql/${cloudSqlConnectionName}`,
+        },
+      }
+    : {
+        host: process.env.DB_HOST,
+        port: Number(process.env.DB_PORT),
+      }),
+
   username: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
