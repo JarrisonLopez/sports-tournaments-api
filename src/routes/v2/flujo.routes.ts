@@ -2,8 +2,13 @@ import { FastifyInstance } from "fastify";
 
 import { AppDataSource } from "../../config/database";
 import { Torneo } from "../../entities/Torneo";
+
+// Arquitectura de clientes
 import { obtenerHabitacion } from "../../clients/hotel.client";
 import { obtenerPelicula } from "../../clients/cine.client";
+
+// Cloud Storage
+import { saveFlowArtifact } from "../../services/artifact-storage.service";
 
 interface FlujoParams {
   torneoId: string;
@@ -54,11 +59,21 @@ export async function flujoRoutes(app: FastifyInstance) {
       obtenerPelicula(peliculaId, traceId),
     ]);
 
-    return {
+    const artifact = {
       traceId,
       torneo,
       habitacion,
       pelicula,
+    };
+
+    const artifactObject = await saveFlowArtifact(artifact);
+
+    return {
+      ...artifact,
+      artifact: {
+        bucket: process.env.GCS_BUCKET_NAME || "sports-tournaments-artifacts",
+        object: artifactObject,
+      },
     };
   });
 }
