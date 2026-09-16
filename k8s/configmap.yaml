@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sports-api-config
+data:
+  CLOUD_SQL_CONNECTION_NAME: sports-tournaments-multicloud:us-central1:sports-mysql
+  DB_USER: sports_user
+  DB_NAME: sports_db
+  GCS_BUCKET_NAME: sports-tournaments-artifacts
