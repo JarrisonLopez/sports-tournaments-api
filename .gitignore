@@ -1,6 +1,5 @@
-@"
 node_modules/
 dist/
 .env
 coverage/
-"@ | Set-Content .gitignore
+PROJECT_CONTEXT.md
