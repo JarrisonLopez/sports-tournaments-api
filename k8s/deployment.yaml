@@ -24,14 +24,17 @@ spec:
           env:
             - name: PORT
               value: "3000"
+            - name: DB_PASSWORD_FILE
+              value: /var/secrets/db-password
           envFrom:
             - configMapRef:
                 name: sports-api-config
-            - secretRef:
-                name: sports-api-secrets
           volumeMounts:
             - name: cloudsql
               mountPath: /cloudsql
+            - name: secrets-store
+              mountPath: /var/secrets
+              readOnly: true
           livenessProbe:
             httpGet:
               path: /health/live
@@ -76,3 +79,9 @@ spec:
       volumes:
         - name: cloudsql
           emptyDir: {}
+        - name: secrets-store
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: sports-api-secrets-gke
