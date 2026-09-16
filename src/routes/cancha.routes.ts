@@ -1,119 +1,17 @@
 import { FastifyInstance } from "fastify";
-import { AppDataSource } from "../config/database";
-import { Cancha } from "../entities/Cancha";
+
+import {
+  actualizarCancha,
+  crearCancha,
+  eliminarCancha,
+  listarCanchas,
+  obtenerCancha,
+} from "../controllers/cancha.controller";
 
 export async function canchaRoutes(app: FastifyInstance) {
-  const canchaRepository = AppDataSource.getRepository(Cancha);
-
-  // Crear una cancha
-  app.post("/canchas", async (request, reply) => {
-    const {
-      nombre,
-      ubicacion,
-      tipoSuperficie,
-      disponible,
-    } = request.body as {
-      nombre: string;
-      ubicacion: string;
-      tipoSuperficie: string;
-      disponible?: boolean;
-    };
-
-    const cancha = canchaRepository.create({
-      nombre,
-      ubicacion,
-      tipoSuperficie,
-      disponible,
-    });
-
-    const canchaGuardada = await canchaRepository.save(cancha);
-
-    return reply.code(201).send(canchaGuardada);
-  });
-
-  // Consultar todas las canchas y permitir filtros
-  app.get("/canchas", async (request, reply) => {
-    const { tipoSuperficie, disponible } = request.query as {
-      tipoSuperficie?: string;
-      disponible?: string;
-    };
-
-    const canchas = await canchaRepository.find({
-      where: {
-        ...(tipoSuperficie && { tipoSuperficie }),
-        ...(disponible !== undefined && {
-          disponible: disponible === "true",
-        }),
-      },
-    });
-
-    return reply.code(200).send(canchas);
-  });
-
-  // Consultar una cancha por ID
-  app.get("/canchas/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
-
-    const cancha = await canchaRepository.findOneBy({
-      id: Number(id),
-    });
-
-    if (!cancha) {
-      return reply.code(404).send({
-        message: "Cancha no encontrada",
-      });
-    }
-
-    return reply.code(200).send(cancha);
-  });
-
-  // Actualizar una cancha
-  app.patch("/canchas/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
-
-    const cancha = await canchaRepository.findOneBy({
-      id: Number(id),
-    });
-
-    if (!cancha) {
-      return reply.code(404).send({
-        message: "Cancha no encontrada",
-      });
-    }
-
-    const datos = request.body as {
-      nombre?: string;
-      ubicacion?: string;
-      tipoSuperficie?: string;
-      disponible?: boolean;
-    };
-
-    canchaRepository.merge(cancha, datos);
-
-    const canchaActualizada = await canchaRepository.save(cancha);
-
-    return reply.code(200).send(canchaActualizada);
-  });
-
-  // Eliminar una cancha
-  app.delete("/canchas/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
-
-    const cancha = await canchaRepository.findOneBy({
-      id: Number(id),
-    });
-
-    if (!cancha) {
-      return reply.code(404).send({
-        message: "Cancha no encontrada",
-      });
-    }
-
-    await canchaRepository.remove(cancha);
-
-    return reply.code(200).send({
-      message: "Cancha eliminada correctamente",
-    });
-  });
-
+  app.post("/canchas", crearCancha);
+  app.get("/canchas", listarCanchas);
+  app.get("/canchas/:id", obtenerCancha);
+  app.patch("/canchas/:id", actualizarCancha);
+  app.delete("/canchas/:id", eliminarCancha);
 }
