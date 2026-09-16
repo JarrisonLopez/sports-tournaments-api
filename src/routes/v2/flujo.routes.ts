@@ -1,14 +1,9 @@
 import { FastifyInstance } from "fastify";
 
-import { AppDataSource } from "../../config/database";
-import { Torneo } from "../../entities/Torneo";
-
-// Arquitectura de clientes
 import { obtenerHabitacion } from "../../clients/hotel.client";
 import { obtenerPelicula } from "../../clients/cine.client";
-
-// Cloud Storage
 import { saveFlowArtifact } from "../../services/artifact-storage.service";
+import { buscarPorId as buscarTorneoPorId } from "../../services/torneo.service";
 
 interface FlujoParams {
   torneoId: string;
@@ -42,11 +37,7 @@ export async function flujoRoutes(app: FastifyInstance) {
       });
     }
 
-    const torneoRepository = AppDataSource.getRepository(Torneo);
-
-    const torneo = await torneoRepository.findOneBy({
-      id: torneoId,
-    });
+    const torneo = await buscarTorneoPorId(torneoId);
 
     if (!torneo) {
       return reply.status(404).send({
