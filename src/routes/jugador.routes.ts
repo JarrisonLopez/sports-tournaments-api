@@ -1,117 +1,17 @@
 import { FastifyInstance } from "fastify";
-import { AppDataSource } from "../config/database";
-import { Jugador } from "../entities/Jugador";
+
+import {
+  actualizarJugador,
+  crearJugador,
+  eliminarJugador,
+  listarJugadores,
+  obtenerJugador,
+} from "../controllers/jugador.controller";
 
 export async function jugadorRoutes(app: FastifyInstance) {
-  const jugadorRepository = AppDataSource.getRepository(Jugador);
-
-  // Crear un jugador
-  app.post("/jugadores", async (request, reply) => {
-    const {
-      nombre,
-      documento,
-      fechaNacimiento,
-      posicion,
-    } = request.body as {
-      nombre: string;
-      documento: string;
-      fechaNacimiento: string;
-      posicion: string;
-    };
-
-    const jugador = jugadorRepository.create({
-      nombre,
-      documento,
-      fechaNacimiento,
-      posicion,
-    });
-
-    const jugadorGuardado = await jugadorRepository.save(jugador);
-
-    return reply.code(201).send(jugadorGuardado);
-  });
-
-  // Consultar todos los jugadores y permitir filtros
-  app.get("/jugadores", async (request, reply) => {
-    const { nombre, posicion } = request.query as {
-      nombre?: string;
-      posicion?: string;
-    };
-
-    const jugadores = await jugadorRepository.find({
-      where: {
-        ...(nombre && { nombre }),
-        ...(posicion && { posicion }),
-      },
-    });
-
-    return reply.code(200).send(jugadores);
-  });
-
-  // Consultar un jugador por ID
-  app.get("/jugadores/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
-
-    const jugador = await jugadorRepository.findOneBy({
-      id: Number(id),
-    });
-
-    if (!jugador) {
-      return reply.code(404).send({
-        message: "Jugador no encontrado",
-      });
-    }
-
-    return reply.code(200).send(jugador);
-  });
-
-  // Actualizar un jugador
-  app.patch("/jugadores/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
-
-    const jugador = await jugadorRepository.findOneBy({
-      id: Number(id),
-    });
-
-    if (!jugador) {
-      return reply.code(404).send({
-        message: "Jugador no encontrado",
-      });
-    }
-
-    const datos = request.body as {
-      nombre?: string;
-      documento?: string;
-      fechaNacimiento?: string;
-      posicion?: string;
-    };
-
-    jugadorRepository.merge(jugador, datos);
-
-    const jugadorActualizado = await jugadorRepository.save(jugador);
-
-    return reply.code(200).send(jugadorActualizado);
-  });
-
-  // Eliminar un jugador
-  app.delete("/jugadores/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
-
-    const jugador = await jugadorRepository.findOneBy({
-      id: Number(id),
-    });
-
-    if (!jugador) {
-      return reply.code(404).send({
-        message: "Jugador no encontrado",
-      });
-    }
-
-    await jugadorRepository.remove(jugador);
-
-    return reply.code(200).send({
-      message: "Jugador eliminado correctamente",
-    });
-  });
-
+  app.post("/jugadores", crearJugador);
+  app.get("/jugadores", listarJugadores);
+  app.get("/jugadores/:id", obtenerJugador);
+  app.patch("/jugadores/:id", actualizarJugador);
+  app.delete("/jugadores/:id", eliminarJugador);
 }
