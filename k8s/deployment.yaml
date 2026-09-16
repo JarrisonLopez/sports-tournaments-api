@@ -17,8 +17,8 @@ spec:
       serviceAccountName: sports-api-ksa
       containers:
         - name: sports-tournaments-api
-          # Artifact Registry image is not confirmed yet.
-          image: IMAGE_PLACEHOLDER
+          # Sports API image stored in Artifact Registry.
+          image: us-central1-docker.pkg.dev/sports-tournaments-multicloud/sports-tournaments/sports-tournaments-api:da834b7
           ports:
             - name: http
               containerPort: 3000
