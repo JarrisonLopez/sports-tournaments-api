@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sports-tournaments-api
+  labels:
+    app: sports-tournaments-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sports-tournaments-api
+  template:
+    metadata:
+      labels:
+        app: sports-tournaments-api
+    spec:
+      containers:
+        - name: sports-tournaments-api
+          # Artifact Registry image is not confirmed yet.
+          image: IMAGE_PLACEHOLDER
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+          envFrom:
+            - configMapRef:
+                name: sports-api-config
+            - secretRef:
+                name: sports-api-secrets
+          volumeMounts:
+            - name: cloudsql
+              mountPath: /cloudsql
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.25.4
+          args:
+            - "--unix-socket=/cloudsql"
+            - "--structured-logs"
+            - "sports-tournaments-multicloud:us-central1:sports-mysql"
+          securityContext:
+            runAsNonRoot: true
+          volumeMounts:
+            - name: cloudsql
+              mountPath: /cloudsql
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      volumes:
+        - name: cloudsql
+          emptyDir: {}
