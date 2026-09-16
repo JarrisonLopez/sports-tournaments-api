@@ -1,120 +1,17 @@
 import { FastifyInstance } from "fastify";
-import { AppDataSource } from "../config/database";
-import { Torneo } from "../entities/Torneo";
+
+import {
+  actualizarTorneo,
+  crearTorneo,
+  eliminarTorneo,
+  listarTorneos,
+  obtenerTorneo,
+} from "../controllers/torneo.controller";
 
 export async function torneoRoutes(app: FastifyInstance) {
-  const torneoRepository = AppDataSource.getRepository(Torneo);
-
-  // Crear un torneo
-  app.post("/torneos", async (request, reply) => {
-    const {
-      nombre,
-      deporte,
-      fechaInicio,
-      fechaFin,
-      estado,
-    } = request.body as {
-      nombre: string;
-      deporte: string;
-      fechaInicio: string;
-      fechaFin: string;
-      estado?: string;
-    };
-
-    const torneo = torneoRepository.create({
-      nombre,
-      deporte,
-      fechaInicio,
-      fechaFin,
-      estado,
-    });
-
-    const torneoGuardado = await torneoRepository.save(torneo);
-
-    return reply.code(201).send(torneoGuardado);
-  });
-
-  // Consultar todos los torneos y permitir filtros
-  app.get("/torneos", async (request, reply) => {
-    const { deporte, estado } = request.query as {
-      deporte?: string;
-      estado?: string;
-    };
-
-    const torneos = await torneoRepository.find({
-      where: {
-        ...(deporte && { deporte }),
-        ...(estado && { estado }),
-      },
-    });
-
-    return reply.code(200).send(torneos);
-  });
-
-  // Consultar un torneo por ID
-  app.get("/torneos/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
-
-    const torneo = await torneoRepository.findOneBy({
-      id: Number(id),
-    });
-
-    if (!torneo) {
-      return reply.code(404).send({
-        message: "Torneo no encontrado",
-      });
-    }
-
-    return reply.code(200).send(torneo);
-  });
-
-  // Actualizar un torneo
-  app.patch("/torneos/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
-
-    const torneo = await torneoRepository.findOneBy({
-      id: Number(id),
-    });
-
-    if (!torneo) {
-      return reply.code(404).send({
-        message: "Torneo no encontrado",
-      });
-    }
-
-    const datos = request.body as {
-      nombre?: string;
-      deporte?: string;
-      fechaInicio?: string;
-      fechaFin?: string;
-      estado?: string;
-    };
-
-    torneoRepository.merge(torneo, datos);
-
-    const torneoActualizado = await torneoRepository.save(torneo);
-
-    return reply.code(200).send(torneoActualizado);
-  });
-
-  // Eliminar un torneo
-  app.delete("/torneos/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
-
-    const torneo = await torneoRepository.findOneBy({
-      id: Number(id),
-    });
-
-    if (!torneo) {
-      return reply.code(404).send({
-        message: "Torneo no encontrado",
-      });
-    }
-
-    await torneoRepository.remove(torneo);
-
-    return reply.code(200).send({
-      message: "Torneo eliminado correctamente",
-    });
-  });
+  app.post("/torneos", crearTorneo);
+  app.get("/torneos", listarTorneos);
+  app.get("/torneos/:id", obtenerTorneo);
+  app.patch("/torneos/:id", actualizarTorneo);
+  app.delete("/torneos/:id", eliminarTorneo);
 }
