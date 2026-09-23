@@ -3,7 +3,7 @@ kind: Service
 metadata:
   name: sports-tournaments-api
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   selector:
     app: sports-tournaments-api
   ports:
