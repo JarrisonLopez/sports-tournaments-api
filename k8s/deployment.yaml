@@ -30,7 +30,7 @@ spec:
       containers:
         - name: sports-tournaments-api
           # Sports API image stored in Artifact Registry.
-          image: us-central1-docker.pkg.dev/sports-tournaments-multicloud/sports-tournaments/sports-tournaments-api:da834b7
+          image: us-central1-docker.pkg.dev/sports-tournaments-multicloud/sports-tournaments/sports-tournaments-api:e5.5
           ports:
             - name: http
               containerPort: 3000

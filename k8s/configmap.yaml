@@ -7,3 +7,4 @@ data:
   DB_USER: sports_user
   DB_NAME: sports_db
   GCS_BUCKET_NAME: sports-tournaments-artifacts
+  OBJECT_STORAGE_API_URL: http://object-storage:3000

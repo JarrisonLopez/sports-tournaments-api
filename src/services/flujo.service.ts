@@ -1,6 +1,6 @@
 import { obtenerHabitacion } from "../clients/hotel.client";
 import { obtenerPelicula } from "../clients/cine.client";
-import { saveFlowArtifact } from "./artifact-storage.service";
+import { saveArtifact } from "../clients/object-storage.client";
 import { buscarPorId as buscarTorneoPorId } from "./torneo.service";
 
 export async function ejecutar(datos: {
@@ -27,13 +27,10 @@ export async function ejecutar(datos: {
     pelicula,
   };
 
-  const artifactObject = await saveFlowArtifact(artifact);
+  const referencia = await saveArtifact(artifact, datos.traceId);
 
   return {
     ...artifact,
-    artifact: {
-      bucket: process.env.GCS_BUCKET_NAME || "sports-tournaments-artifacts",
-      object: artifactObject,
-    },
+    artifact: referencia,
   };
 }
