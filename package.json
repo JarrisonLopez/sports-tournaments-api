@@ -21,6 +21,8 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/sdk-metrics": "^2.11.0",
     "dotenv": "^17.4.2",
     "fastify": "^5.12.1",
     "mysql2": "^3.24.2",
