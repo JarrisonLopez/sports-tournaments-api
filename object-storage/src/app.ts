@@ -1,9 +1,14 @@
-import Fastify, { FastifyServerOptions } from "fastify";
+import { trace } from "@opentelemetry/api";
+import Fastify, { FastifyInstance, FastifyServerOptions } from "fastify";
 import { MetricReader } from "@opentelemetry/sdk-metrics";
 
 import { artifactRoutes } from "./routes/artifact.routes";
 import { healthRoutes } from "./routes/health.routes";
-import { createHttpMetrics, registerRedMetrics } from "./observability/metrics";
+import {
+  createHttpMetrics,
+  registerRedMetrics,
+  resolveHttpRoute,
+} from "./observability/metrics";
 
 export type BuildAppOptions = {
   metricsReader?: MetricReader;
@@ -15,6 +20,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     logger: options.logger ?? true,
   });
 
+  registerServerSpanRoute(app);
   registerRedMetrics(
     app,
     createHttpMetrics("object-storage", options.metricsReader),
@@ -27,4 +33,18 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
 
   return app;
+}
+
+function registerServerSpanRoute(app: FastifyInstance): void {
+  app.addHook("onRequest", async (request) => {
+    const span = trace.getActiveSpan();
+
+    if (!span) {
+      return;
+    }
+
+    const route = resolveHttpRoute(request);
+    span.updateName(`${request.method} ${route}`);
+    span.setAttribute("http.route", route);
+  });
 }

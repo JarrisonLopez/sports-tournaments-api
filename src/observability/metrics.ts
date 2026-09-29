@@ -120,7 +120,7 @@ function isApiV2Path(pathname: string): boolean {
   return pathname === "/api/v2" || pathname.startsWith("/api/v2/");
 }
 
-function resolveHttpRoute(request: FastifyRequest): string {
+export function resolveHttpRoute(request: FastifyRequest): string {
   const routeUrl = request.routeOptions.url;
 
   if (request.is404 || typeof routeUrl !== "string" || routeUrl.length === 0) {

@@ -1,4 +1,5 @@
-import Fastify, { FastifyServerOptions } from "fastify";
+import { trace } from "@opentelemetry/api";
+import Fastify, { FastifyInstance, FastifyServerOptions } from "fastify";
 import { MetricReader } from "@opentelemetry/sdk-metrics";
 
 import { torneoRoutes } from "./routes/torneo.routes";
@@ -6,7 +7,11 @@ import { canchaRoutes } from "./routes/cancha.routes";
 import { jugadorRoutes } from "./routes/jugador.routes";
 import { healthRoutes } from "./routes/health.routes";
 import { v2Routes } from "./routes/v2";
-import { createHttpMetrics, registerRedMetrics } from "./observability/metrics";
+import {
+  createHttpMetrics,
+  registerRedMetrics,
+  resolveHttpRoute,
+} from "./observability/metrics";
 
 export type BuildAppOptions = {
   metricsReader?: MetricReader;
@@ -18,6 +23,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     logger: options.logger ?? true,
   });
 
+  registerServerSpanRoute(app);
   registerRedMetrics(
     app,
     createHttpMetrics("sports-api", options.metricsReader),
@@ -39,4 +45,18 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
 
   return app;
+}
+
+function registerServerSpanRoute(app: FastifyInstance): void {
+  app.addHook("onRequest", async (request) => {
+    const span = trace.getActiveSpan();
+
+    if (!span) {
+      return;
+    }
+
+    const route = resolveHttpRoute(request);
+    span.updateName(`${request.method} ${route}`);
+    span.setAttribute("http.route", route);
+  });
 }
