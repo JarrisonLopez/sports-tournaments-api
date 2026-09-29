@@ -90,6 +90,8 @@ describe("Logs correlacionados de Sports API", () => {
     expect(completed[0].traceId).toBe("trace-abc");
     expect(completed[0].reqId).toBe(incoming[0].reqId);
 
+    expectNoOtelFields(logs.entries);
+
     await app.close();
   });
 
@@ -124,6 +126,7 @@ describe("Logs correlacionados de Sports API", () => {
     expect(completed?.traceId).toBe(generated);
     expect(completed?.reqId).toEqual(expect.any(String));
     expect(completed?.reqId).not.toBe(generated);
+    expectNoOtelFields(logs.entries);
 
     await app.close();
   });
@@ -160,6 +163,7 @@ describe("Logs correlacionados de Sports API", () => {
     expect(
       logs.entries.find((entry) => entry.msg === "request completed")?.traceId,
     ).toBe("trace-error");
+    expectNoOtelFields(logs.entries);
 
     await app.close();
   });
@@ -205,7 +209,19 @@ describe("Logs correlacionados de Sports API", () => {
     const traces = [...grouped.values()].map((value) => [...value][0]);
     expect(traces).toContain("trace-a");
     expect(traces).toContain("trace-b");
+    expectNoOtelFields(logs.entries);
 
     await app.close();
   });
 });
+
+function expectNoOtelFields(entries: LogEntry[]): void {
+  const traced = entries.filter((entry) => typeof entry.traceId === "string");
+
+  expect(traced.length).toBeGreaterThan(0);
+
+  for (const entry of traced) {
+    expect(entry).not.toHaveProperty("otelTraceId");
+    expect(entry).not.toHaveProperty("otelSpanId");
+  }
+}

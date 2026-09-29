@@ -124,6 +124,7 @@ describe("Logs correlacionados de Object Storage", () => {
     expect(completed[0].traceId).toBe("trace-1");
     expect(completed[0].reqId).toBe(incoming[0].reqId);
     expect(completed[0].reqId).not.toBe("trace-1");
+    expectNoOtelFields(logs.entries);
 
     await app.close();
   });
@@ -163,6 +164,7 @@ describe("Logs correlacionados de Object Storage", () => {
     expect(
       logs.entries.find((entry) => entry.msg === "request completed")?.traceId,
     ).toBe("trace-1");
+    expectNoOtelFields(logs.entries);
 
     await app.close();
   });
@@ -216,6 +218,7 @@ describe("Logs correlacionados de Object Storage", () => {
     const traces = [...grouped.values()].map((value) => [...value][0]);
     expect(traces).toContain("trace-a");
     expect(traces).toContain("trace-b");
+    expectNoOtelFields(logs.entries);
 
     await app.close();
   });
@@ -250,6 +253,12 @@ describe("Logs correlacionados de Object Storage", () => {
     expect(logs.entries.some((entry) => entry.traceId !== undefined)).toBe(
       false,
     );
+    expect(logs.entries.some((entry) => entry.otelTraceId !== undefined)).toBe(
+      false,
+    );
+    expect(logs.entries.some((entry) => entry.otelSpanId !== undefined)).toBe(
+      false,
+    );
     expect(logs.entries.some((entry) => typeof entry.reqId === "string")).toBe(
       true,
     );
@@ -257,3 +266,14 @@ describe("Logs correlacionados de Object Storage", () => {
     await app.close();
   });
 });
+
+function expectNoOtelFields(entries: LogEntry[]): void {
+  const traced = entries.filter((entry) => typeof entry.traceId === "string");
+
+  expect(traced.length).toBeGreaterThan(0);
+
+  for (const entry of traced) {
+    expect(entry).not.toHaveProperty("otelTraceId");
+    expect(entry).not.toHaveProperty("otelSpanId");
+  }
+}

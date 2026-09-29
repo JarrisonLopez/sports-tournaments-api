@@ -1,3 +1,4 @@
+import { trace } from "@opentelemetry/api";
 import { randomUUID } from "node:crypto";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
@@ -39,7 +40,19 @@ function bindTraceLog(
   reply: FastifyReply,
   traceId: string,
 ): void {
-  const tracedLog = request.log.child({ traceId });
+  const bindings: Record<string, string> = { traceId };
+  const span = trace.getActiveSpan();
+
+  if (span) {
+    const spanContext = span.spanContext();
+
+    if (trace.isSpanContextValid(spanContext)) {
+      bindings.otelTraceId = spanContext.traceId;
+      bindings.otelSpanId = spanContext.spanId;
+    }
+  }
+
+  const tracedLog = request.log.child(bindings);
   request.log = tracedLog;
   reply.log = tracedLog;
 }
