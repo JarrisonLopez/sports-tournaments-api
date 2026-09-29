@@ -1,3 +1,4 @@
+import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 import { Storage } from "@google-cloud/storage";
 
 const storage = new Storage();
@@ -73,6 +74,33 @@ function isNotFoundError(error: unknown): boolean {
   return code === 404 || code === "404";
 }
 
+function traceStorageOperation<T>(
+  name: string,
+  operation: "upload" | "download",
+  run: () => Promise<T>,
+): Promise<T> {
+  return trace.getTracer("object-storage").startActiveSpan(
+    name,
+    {
+      kind: SpanKind.CLIENT,
+      attributes: {
+        "gcs.operation": operation,
+      },
+    },
+    async (span) => {
+      try {
+        return await run();
+      } catch (error) {
+        span.recordException(error instanceof Error ? error : String(error));
+        span.setStatus({ code: SpanStatusCode.ERROR });
+        throw error;
+      } finally {
+        span.end();
+      }
+    },
+  );
+}
+
 export async function saveArtifact(
   artifact: FlowArtifact,
 ): Promise<ArtifactReference> {
@@ -81,15 +109,17 @@ export async function saveArtifact(
   const file = storage.bucket(bucketName).file(objectName);
 
   try {
-    await file.save(JSON.stringify(artifact, null, 2), {
-      contentType: "application/json",
-      resumable: false,
-      metadata: {
+    await traceStorageOperation("gcs.upload", "upload", () =>
+      file.save(JSON.stringify(artifact, null, 2), {
+        contentType: "application/json",
+        resumable: false,
         metadata: {
-          traceId: artifact.traceId,
+          metadata: {
+            traceId: artifact.traceId,
+          },
         },
-      },
-    });
+      }),
+    );
   } catch (error) {
     throw new StorageOperationError(error);
   }
@@ -108,7 +138,11 @@ export async function readArtifact(traceId: string): Promise<unknown> {
   let contents: Buffer;
 
   try {
-    const downloaded = await file.download();
+    const downloaded = await traceStorageOperation(
+      "gcs.download",
+      "download",
+      () => file.download(),
+    );
     contents = Buffer.from(downloaded[0]);
   } catch (error) {
     if (isNotFoundError(error)) {

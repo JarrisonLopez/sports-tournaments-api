@@ -20,6 +20,7 @@ const SPORTS_SERVER = "GET /api/v2/flujo/:torneoId/:habitacionId/:peliculaId";
 const HOTEL_CLIENT = "GET /api/v2/habitacion/:id";
 const CINE_CLIENT = "GET /api/v2/peliculas/:id";
 const OBJECT_STORAGE_OPERATION = "POST /api/v2/artifacts";
+const GCS_UPLOAD = "gcs.upload";
 
 type SerializedSpan = {
   name: string;
@@ -153,7 +154,7 @@ describe("Tracing distribuido Sports -> Object Storage", () => {
       const storageSpans = storageSession.spans;
 
       expect(sportsSpans).toHaveLength(4);
-      expect(storageSpans).toHaveLength(1);
+      expect(storageSpans).toHaveLength(2);
 
       const sportsServer = one(sportsSpans, SPORTS_SERVER, SERVER_KIND);
       const hotelClient = one(sportsSpans, HOTEL_CLIENT, CLIENT_KIND);
@@ -196,6 +197,12 @@ describe("Tracing distribuido Sports -> Object Storage", () => {
       expect(storageServer.parentSpanId).toBe(storageClient.spanId);
       expect(storageServer.serviceName).toBe("object-storage");
       expect(storageServer["http.route"]).toBe("/api/v2/artifacts");
+
+      const gcsUpload = one(storageSpans, GCS_UPLOAD, CLIENT_KIND);
+
+      expect(gcsUpload.traceId).toBe(traceId);
+      expect(gcsUpload.parentSpanId).toBe(storageServer.spanId);
+      expect(gcsUpload.serviceName).toBe("object-storage");
 
       const hotelTrace = parseTraceparent(hotelHeaders.store.traceparent);
       const cineTrace = parseTraceparent(cineHeaders.store.traceparent);
