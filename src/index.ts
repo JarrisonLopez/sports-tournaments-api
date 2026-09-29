@@ -1,3 +1,4 @@
+import "./instrumentation";
 import { buildApp } from "./app";
 import { AppDataSource } from "./config/database";
 
