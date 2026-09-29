@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { FastifyServerOptions } from "fastify";
 import { MetricReader } from "@opentelemetry/sdk-metrics";
 
 import { torneoRoutes } from "./routes/torneo.routes";
@@ -10,11 +10,12 @@ import { createHttpMetrics, registerRedMetrics } from "./observability/metrics";
 
 export type BuildAppOptions = {
   metricsReader?: MetricReader;
+  logger?: FastifyServerOptions["logger"];
 };
 
 export function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({
-    logger: true,
+    logger: options.logger ?? true,
   });
 
   registerRedMetrics(

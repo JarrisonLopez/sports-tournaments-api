@@ -33,6 +33,15 @@ async function collectPoints(
   for (const scope of result.resourceMetrics.scopeMetrics) {
     for (const metric of scope.metrics) {
       for (const dataPoint of metric.dataPoints) {
+        expect(dataPoint.attributes).not.toHaveProperty("traceId");
+        expect(Object.keys(dataPoint.attributes).sort()).toEqual(
+          [
+            "http.method",
+            "http.route",
+            "http.status_code",
+            "service",
+          ].sort(),
+        );
         points.push({
           name: metric.descriptor.name,
           unit: metric.descriptor.unit,

@@ -39,6 +39,16 @@ function isArtifactBody(body: unknown): body is {
   );
 }
 
+function bindTraceLog(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  traceId: string,
+): void {
+  const tracedLog = request.log.child({ traceId });
+  request.log = tracedLog;
+  reply.log = tracedLog;
+}
+
 function sendStorageError(
   request: FastifyRequest,
   reply: FastifyReply,
@@ -71,6 +81,8 @@ export async function createArtifact(
       message: "El trace id no es válido",
     });
   }
+
+  bindTraceLog(request, reply, traceId);
 
   const body = request.body;
 
@@ -133,7 +145,15 @@ export async function getArtifact(
     });
   }
 
-  if (!isValidTraceId(traceId) || !isValidTraceId(requestedTraceId)) {
+  if (!isValidTraceId(traceId)) {
+    return reply.code(400).send({
+      message: "El trace id no es válido",
+    });
+  }
+
+  bindTraceLog(request, reply, traceId);
+
+  if (!isValidTraceId(requestedTraceId)) {
     return reply.code(400).send({
       message: "El trace id no es válido",
     });

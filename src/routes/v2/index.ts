@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { FastifyInstance } from "fastify";
+import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import { torneoRoutes } from "../torneo.routes";
 import { canchaRoutes } from "../cancha.routes";
@@ -17,10 +17,10 @@ export async function v2Routes(app: FastifyInstance) {
 
     request.headers["x-trace-id"] = traceId;
     reply.header("x-trace-id", traceId);
+    bindTraceLog(request, reply, traceId);
 
     request.log.info(
       {
-        traceId,
         method: request.method,
         url: request.url,
       },
@@ -32,4 +32,14 @@ export async function v2Routes(app: FastifyInstance) {
   app.register(canchaRoutes);
   app.register(jugadorRoutes);
   app.register(flujoRoutes);
+}
+
+function bindTraceLog(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  traceId: string,
+): void {
+  const tracedLog = request.log.child({ traceId });
+  request.log = tracedLog;
+  reply.log = tracedLog;
 }
