@@ -250,11 +250,16 @@ describe("Exportación OTLP de trazas en Object Storage", () => {
       await app.close();
       await shutdownTracing();
 
-      expect(receiver.requests).toHaveLength(1);
-      expect(receiver.requests[0]?.path).toBe("/v1/traces");
-      expect(receiver.requests[0]?.contentType).toContain("application/json");
+      const traces = receiver.requests.filter(
+        (request) => request.path === "/v1/traces",
+      );
 
-      const spans = allSpans(parsePayload(receiver.requests[0]?.body ?? ""));
+      expect(traces).toHaveLength(1);
+      expect(traces[0]?.contentType).toContain("application/json");
+
+      const spans = withoutLocalCollectorSpans(
+        allSpans(parsePayload(traces[0]?.body ?? "")),
+      );
       const server = oneSpan(spans, "POST /api/v2/artifacts");
       const upload = oneSpan(spans, "gcs.upload");
 
@@ -300,11 +305,18 @@ describe("Exportación OTLP de trazas en Object Storage", () => {
       await app.close();
       await shutdownTracing();
 
-      const spans = allSpans(parsePayload(receiver.requests[0]?.body ?? ""));
+      const traces = receiver.requests.filter(
+        (request) => request.path === "/v1/traces",
+      );
+
+      expect(traces).toHaveLength(1);
+
+      const spans = withoutLocalCollectorSpans(
+        allSpans(parsePayload(traces[0]?.body ?? "")),
+      );
       const server = oneSpan(spans, "GET /api/v2/artifacts/:traceId");
       const download = oneSpan(spans, "gcs.download");
 
-      expect(receiver.requests).toHaveLength(1);
       expect(spans).toHaveLength(2);
       expect(server.serviceName).toBe("object-storage");
       expect(download.serviceName).toBe("object-storage");
@@ -318,6 +330,14 @@ describe("Exportación OTLP de trazas en Object Storage", () => {
     }
   }, 20_000);
 });
+
+function withoutLocalCollectorSpans(spans: ExportedSpan[]): ExportedSpan[] {
+  return spans.filter((item) => !isLocalCollectorSpan(item.span));
+}
+
+function isLocalCollectorSpan(span: OtlpSpan): boolean {
+  return span.name === "POST" && stringAttribute(span, "url.path") === "/v1/metrics";
+}
 
 function oneSpan(spans: ExportedSpan[], name: string): ExportedSpan {
   const matches = spans.filter((item) => item.span.name === name);
