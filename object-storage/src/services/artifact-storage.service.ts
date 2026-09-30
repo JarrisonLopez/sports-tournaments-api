@@ -8,6 +8,7 @@ export interface FlowArtifact {
   torneo: unknown;
   habitacion: unknown;
   pelicula: unknown;
+  origen?: string;
 }
 
 export interface ArtifactReference {

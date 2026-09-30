@@ -4,7 +4,7 @@ metadata:
   name: object-storage
   namespace: default
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   selector:
     app: object-storage
   ports:

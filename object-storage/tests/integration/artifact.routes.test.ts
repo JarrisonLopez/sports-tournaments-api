@@ -86,6 +86,172 @@ describe("Rutas de artifacts", () => {
     await app.close();
   });
 
+  it("acepta el artifact de Sports sin origen y conserva ese contrato", async () => {
+    const app = buildApp();
+    const sportsArtifact = {
+      traceId: "trace-1",
+      torneo: { id: 1, nombre: "Torneo Universitario" },
+      habitacion: { id: 2, numeroHabitacion: "101" },
+      pelicula: { id: 3, nombre: "Pelicula" },
+    };
+
+    const respuesta = await app.inject({
+      method: "POST",
+      url: "/api/v2/artifacts",
+      headers: {
+        "x-trace-id": "trace-1",
+      },
+      payload: sportsArtifact,
+    });
+
+    expect(respuesta.statusCode).toBe(201);
+    expect(mocks.save).toHaveBeenCalledWith(
+      JSON.stringify(sportsArtifact, null, 2),
+      expect.objectContaining({ contentType: "application/json" }),
+    );
+    expect(mocks.save.mock.calls[0]?.[0]).not.toContain("origen");
+
+    await app.close();
+  });
+
+  it("conserva origen en el JSON guardado", async () => {
+    const app = buildApp();
+    const conOrigen = {
+      traceId: "trace-1",
+      origen: "sports",
+      torneo: { id: 1 },
+      habitacion: { id: 2 },
+      pelicula: { id: 3 },
+    };
+
+    const respuesta = await app.inject({
+      method: "POST",
+      url: "/api/v2/artifacts",
+      headers: {
+        "x-trace-id": "trace-1",
+      },
+      payload: conOrigen,
+    });
+
+    expect(respuesta.statusCode).toBe(201);
+    expect(mocks.save).toHaveBeenCalledWith(
+      JSON.stringify(
+        {
+          traceId: "trace-1",
+          origen: "sports",
+          torneo: { id: 1 },
+          habitacion: { id: 2 },
+          pelicula: { id: 3 },
+        },
+        null,
+        2,
+      ),
+      expect.objectContaining({ contentType: "application/json" }),
+    );
+
+    await app.close();
+  });
+
+  it("devuelve origen en el GET del artifact guardado", async () => {
+    const app = buildApp();
+    const almacenado = {
+      traceId: "trace-1",
+      origen: "sports",
+      torneo: { id: 1 },
+      habitacion: { id: 2 },
+      pelicula: { id: 3 },
+    };
+    mocks.download.mockResolvedValue([
+      Buffer.from(JSON.stringify(almacenado)),
+    ]);
+
+    const respuesta = await app.inject({
+      method: "GET",
+      url: "/api/v2/artifacts/trace-1",
+      headers: {
+        "x-trace-id": "trace-1",
+      },
+    });
+
+    expect(respuesta.statusCode).toBe(200);
+    expect(respuesta.json()).toEqual(almacenado);
+    expect(respuesta.json().origen).toBe("sports");
+
+    await app.close();
+  });
+
+  it("rechaza un origen que no es string", async () => {
+    const app = buildApp();
+
+    const respuesta = await app.inject({
+      method: "POST",
+      url: "/api/v2/artifacts",
+      headers: {
+        "x-trace-id": "trace-1",
+      },
+      payload: {
+        ...artifact,
+        origen: 1,
+      },
+    });
+
+    expect(respuesta.statusCode).toBe(400);
+    expect(respuesta.json()).toEqual({
+      message: "El origen no es válido",
+    });
+    expect(mocks.save).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
+  it("rechaza un origen vacío", async () => {
+    const app = buildApp();
+
+    const respuesta = await app.inject({
+      method: "POST",
+      url: "/api/v2/artifacts",
+      headers: {
+        "x-trace-id": "trace-1",
+      },
+      payload: {
+        ...artifact,
+        origen: "",
+      },
+    });
+
+    expect(respuesta.statusCode).toBe(400);
+    expect(respuesta.json()).toEqual({
+      message: "El origen no es válido",
+    });
+    expect(mocks.save).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
+  it("rechaza un origen de solo espacios", async () => {
+    const app = buildApp();
+
+    const respuesta = await app.inject({
+      method: "POST",
+      url: "/api/v2/artifacts",
+      headers: {
+        "x-trace-id": "trace-1",
+      },
+      payload: {
+        ...artifact,
+        origen: "   ",
+      },
+    });
+
+    expect(respuesta.statusCode).toBe(400);
+    expect(respuesta.json()).toEqual({
+      message: "El origen no es válido",
+    });
+    expect(mocks.save).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
   it("rechaza un POST sin x-trace-id", async () => {
     const app = buildApp();
 

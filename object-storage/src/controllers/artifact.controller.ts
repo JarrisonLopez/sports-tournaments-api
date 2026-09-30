@@ -22,6 +22,20 @@ function headerTraceId(request: FastifyRequest): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function optionalOrigen(body: object): string | undefined | null {
+  if (!Object.hasOwn(body, "origen")) {
+    return undefined;
+  }
+
+  const origen = (body as { origen: unknown }).origen;
+
+  if (typeof origen !== "string" || origen.trim() === "") {
+    return null;
+  }
+
+  return origen;
+}
+
 function isArtifactBody(body: unknown): body is {
   traceId: unknown;
   torneo: unknown;
@@ -117,8 +131,17 @@ export async function createArtifact(
     });
   }
 
+  const origen = optionalOrigen(body);
+
+  if (origen === null) {
+    return reply.code(400).send({
+      message: "El origen no es válido",
+    });
+  }
+
   const artifact: FlowArtifact = {
     traceId: body.traceId,
+    ...(origen !== undefined ? { origen } : {}),
     torneo: body.torneo,
     habitacion: body.habitacion,
     pelicula: body.pelicula,

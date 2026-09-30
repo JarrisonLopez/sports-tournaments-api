@@ -382,8 +382,9 @@ Google Cloud Storage
 En GKE:
 
 - Deployment `object-storage`, namespace `default`, 1 réplica
-- Service `object-storage`, tipo ClusterIP, puerto 3000
-- Sports lo localiza con `OBJECT_STORAGE_API_URL`
+- Service `object-storage`, tipo LoadBalancer, puerto 3000
+- Sports lo localiza por DNS interno con `OBJECT_STORAGE_API_URL=http://object-storage:3000`. No usa la IP pública
+- Un cliente externo, como el Orquestador, usa la base `STORAGE_API_URL`. Esa dirección es la IP externa del LoadBalancer y no forma parte del contrato: cambia si se recrea el Service
 - El bucket lo define `GCS_BUCKET_NAME` en el ConfigMap `object-storage-config`
 - El ServiceAccount `object-storage-ksa` tiene anotación de Workload Identity hacia `object-storage-gsa@sports-tournaments-multicloud.iam.gserviceaccount.com`
 - El cliente de GCS se construye sin clave en el código: usa las credenciales del entorno
@@ -401,7 +402,27 @@ flujos/{traceId}.json
 | POST | `/api/v2/artifacts` | Guarda el artifact y responde 201 con `{ "bucket", "object" }` |
 | GET | `/api/v2/artifacts/:traceId` | Lee el JSON guardado para ese trace id |
 
-Ambos exigen el header `x-trace-id`. En el POST, ese header debe coincidir con `traceId` del cuerpo. En el GET, debe coincidir con el `:traceId` de la ruta. El cuerpo del POST debe incluir `traceId`, `torneo`, `habitacion` y `pelicula`.
+Ambos exigen el header `x-trace-id`. En el POST, ese header debe coincidir con `traceId` del cuerpo. En el GET, debe coincidir con el `:traceId` de la ruta. El cuerpo del POST debe incluir `traceId`, `torneo`, `habitacion` y `pelicula`. `origen` es opcional. Si no viene, el JSON guardado mantiene el contrato anterior. Si viene, tiene que ser un string no vacío y se conserva. Un `origen` que no es string, vacío o solo espacios responde 400. No hay lista cerrada de valores.
+
+`x-trace-id` identifica el artifact. No autentica la petición.
+
+El cuerpo es JSON (`Content-Type: application/json`). No hay `multipart/form-data` ni `DELETE`.
+
+Ejemplo que puede enviar el Orquestador:
+
+```json
+{
+  "traceId": "...",
+  "origen": "sports",
+  "habitacion": {},
+  "torneo": {},
+  "pelicula": {}
+}
+```
+
+El objeto almacenado conserva `origen` junto con `traceId`, `torneo`, `habitacion` y `pelicula`. Sports sigue enviando el artifact sin `origen`.
+
+El LoadBalancer existe para que el Orquestador, en otra nube, llegue a Object Storage durante la integración académica. No es la arquitectura permanente: el servicio no tiene autenticación de aplicación. En producción el acceso debería quedar protegido. Dentro del clúster, Sports sigue llamando a `http://object-storage:3000`.
 
 También expone `GET /health/live` y `GET /health/ready`. Ready comprueba que `GCS_BUCKET_NAME` esté definida.
 
@@ -426,7 +447,7 @@ Manifiestos en `k8s/`. Cluster de referencia: `sports-tournaments-gke`, zona `us
 
 ### Object Storage
 
-- Deployment de 1 réplica y Service ClusterIP, descritos arriba
+- Deployment de 1 réplica y Service LoadBalancer, descritos arriba. Sports sigue usando el DNS interno `http://object-storage:3000`
 - Requests: CPU 50m, memoria 64Mi. Limits: CPU 250m, memoria 256Mi
 - Las mismas probes `/health/live` y `/health/ready`
 - No hay HPA de Object Storage en el repositorio
@@ -675,6 +696,7 @@ Los apellidos de Samuel y de Daniel no están en este repositorio.
 - Las credenciales no se versionan. `.env.example` solo deja los nombres de la base local.
 - En GKE, la contraseña de Sports sale de Secret Manager y se monta como archivo. El Deployment no incluye el valor.
 - Object Storage no lleva una clave de GCS en el manifiesto. El ServiceAccount usa Workload Identity.
+- El Service de Object Storage es un LoadBalancer sin JWT ni API key. `x-trace-id` es correlación, no autenticación. Cualquiera que alcance la IP puede escribir o leer artifacts si conoce el trace id. Esa exposición corresponde al entorno académico. En producción debería protegerse con mecanismos apropiados.
 - Las URL de Hotel, Cine y Object Storage, el bucket y el endpoint OTLP son configuración, no código.
 - La credencial OTLP de Grafana Cloud vive en un Secret de Kubernetes.
 
