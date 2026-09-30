@@ -1,6 +1,16 @@
 import { Counter, Histogram } from "@opentelemetry/api";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import {
+  defaultResource,
+  resourceFromAttributes,
+} from "@opentelemetry/resources";
+import {
+  MeterProvider,
+  MetricReader,
+  PeriodicExportingMetricReader,
+} from "@opentelemetry/sdk-metrics";
+import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { FastifyInstance, FastifyRequest } from "fastify";
-import { MeterProvider, MetricReader } from "@opentelemetry/sdk-metrics";
 
 export const HTTP_REQUESTS_METRIC = "http.server.requests";
 export const HTTP_ERRORS_METRIC = "http.server.errors";
@@ -21,6 +31,10 @@ const DURATION_BUCKETS_SECONDS = [
   0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
 ];
 
+const OTLP_METRICS_PATH = "v1/metrics";
+
+export const METRIC_EXPORT_INTERVAL_MILLIS = 60_000;
+
 export type HttpMetrics = {
   serviceName: string;
   requests: Counter;
@@ -31,15 +45,21 @@ export type HttpMetrics = {
 
 /**
  * Creates the RED instruments for one process.
- * Pass a MetricReader to export. An OTLP PeriodicExportingMetricReader
- * can be supplied later without changing the HTTP hooks.
+ * An explicit MetricReader is used alone. Without one, a valid
+ * OTEL_EXPORTER_OTLP_ENDPOINT adds a PeriodicExportingMetricReader.
  */
 export function createHttpMetrics(
   serviceName: string,
   reader?: MetricReader,
+  env: NodeJS.ProcessEnv = process.env,
 ): HttpMetrics {
   const provider = new MeterProvider({
-    readers: reader ? [reader] : [],
+    resource: defaultResource().merge(
+      resourceFromAttributes({
+        [ATTR_SERVICE_NAME]: serviceName,
+      }),
+    ),
+    readers: resolveMetricReaders(reader, env),
     sdkMetricsEnabled: false,
   });
 
@@ -68,6 +88,54 @@ export function createHttpMetrics(
     duration,
     shutdown: () => provider.shutdown(),
   };
+}
+
+export function resolveMetricReaders(
+  reader?: MetricReader,
+  env: NodeJS.ProcessEnv = process.env,
+): MetricReader[] {
+  if (reader) {
+    return [reader];
+  }
+
+  const url = otlpMetricsUrl(env.OTEL_EXPORTER_OTLP_ENDPOINT);
+
+  if (!url) {
+    return [];
+  }
+
+  return [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({ url }),
+      exportIntervalMillis: METRIC_EXPORT_INTERVAL_MILLIS,
+    }),
+  ];
+}
+
+function otlpMetricsUrl(endpoint: string | undefined): string | undefined {
+  if (typeof endpoint !== "string") {
+    return undefined;
+  }
+
+  const base = endpoint.trim();
+
+  if (base.length === 0) {
+    return undefined;
+  }
+
+  const withSlash = base.endsWith("/") ? base : `${base}/`;
+
+  try {
+    const url = new URL(`${withSlash}${OTLP_METRICS_PATH}`);
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return undefined;
+    }
+
+    return url.href;
+  } catch {
+    return undefined;
+  }
 }
 
 export function registerRedMetrics(

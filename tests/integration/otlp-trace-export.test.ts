@@ -166,11 +166,14 @@ describe("Exportación OTLP de trazas en Sports", () => {
       await app.close();
       await shutdownTracing();
 
-      expect(receiver.requests).toHaveLength(1);
-      expect(receiver.requests[0]?.path).toBe("/v1/traces");
-      expect(receiver.requests[0]?.contentType).toContain("application/json");
+      const traces = receiver.requests.filter(
+        (request) => request.path === "/v1/traces",
+      );
 
-      const payload = JSON.parse(receiver.requests[0]?.body ?? "") as OtlpPayload;
+      expect(traces).toHaveLength(1);
+      expect(traces[0]?.contentType).toContain("application/json");
+
+      const payload = JSON.parse(traces[0]?.body ?? "") as OtlpPayload;
       const exported = spansNamed(payload, SERVER_SPAN_NAME);
 
       expect(exported).toHaveLength(1);
