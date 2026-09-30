@@ -5,3 +5,4 @@ metadata:
   namespace: default
 data:
   GCS_BUCKET_NAME: sports-tournaments-artifacts
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318

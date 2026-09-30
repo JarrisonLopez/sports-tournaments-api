@@ -9,3 +9,4 @@ data:
   OBJECT_STORAGE_API_URL: http://object-storage:3000
   HOTEL_API_URL: http://157.137.215.20
   CINE_API_URL: http://4.255.124.181
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
