@@ -3,3 +3,32 @@ dist/
 .env
 coverage/
 PROJECT_CONTEXT.md
+
+# Terraform local cache. .terraform.lock.hcl queda fuera de esta carpeta y se versiona.
+.terraform/
+
+# Estado local, copias de respaldo y bloqueo local de estado
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+
+# Variables reales. Los ejemplos sí se versionan.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Overrides locales
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Logs de fallos de Terraform
+crash.log
+crash.*.log
+
+# Planes binarios. Pueden contener valores sensibles.
+# .terraform.lock.hcl no entra en estos patrones y se versiona.
+tfplan
+tfplan.*
+*.tfplan
