@@ -8,7 +8,6 @@ terraform {
     }
   }
 
-  # El bloque backend "gcs" no está activo. El bucket todavía no existe y
-  # un backend parcial obligaría a otro init. El ejemplo está en
-  # backend.hcl.example. El bucket se declara en bootstrap/.
+  # bucket y prefix llegan por -backend-config=backend.hcl.
+  backend "gcs" {}
 }
