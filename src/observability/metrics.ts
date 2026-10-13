@@ -145,7 +145,7 @@ export function registerRedMetrics(
   app.addHook("onResponse", async (request, reply) => {
     const pathname = pathnameOf(request.url);
 
-    if (isHealthPath(pathname) || !isApiV2Path(pathname)) {
+    if (isHealthPath(pathname) || !isMeasuredApiPath(pathname)) {
       return;
     }
 
@@ -184,8 +184,13 @@ function isHealthPath(pathname: string): boolean {
   return HEALTH_PATHS.has(pathname);
 }
 
-function isApiV2Path(pathname: string): boolean {
-  return pathname === "/api/v2" || pathname.startsWith("/api/v2/");
+function isMeasuredApiPath(pathname: string): boolean {
+  return (
+    pathname === "/api/v2" ||
+    pathname.startsWith("/api/v2/") ||
+    pathname === "/api/v3" ||
+    pathname.startsWith("/api/v3/")
+  );
 }
 
 export function resolveHttpRoute(request: FastifyRequest): string {

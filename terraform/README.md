@@ -1,6 +1,6 @@
 # Entrega 3 — Infraestructura con Terraform
 
-Esta carpeta describe la infraestructura de la Entrega 3 para el proyecto `sports-tournaments-multicloud`, en `us-central1`. Los módulos ya están escritos. No hay estado, no hay backend remoto y no se ha creado ningún recurso. `k8s/` sigue siendo la Entrega 2.
+Esta carpeta describe la infraestructura de la Entrega 3 para el proyecto `sports-tournaments-multicloud`, en `us-central1`. La API individual es `POST /api/v3/torneos/:id/artifact`: Sports lee el torneo en MySQL y Object Storage lo guarda en Cloud Storage. V1 y V2 siguen en el código. Esta configuración no se ha aplicado y no hay recursos creados por ella. `k8s/` sigue siendo la Entrega 2.
 
 No ejecutes `terraform init`, `plan`, `apply` ni `destroy` sin autorización explícita.
 
@@ -64,7 +64,7 @@ Cuando haya autorización, el orden seguro es este:
 5. Construir y publicar las dos imágenes en el repositorio de esta configuración.
 6. Poner las rutas reales en `sports_image` y `object_storage_image`, cambiar `deploy_applications` a true y aplicar otra vez. En ese apply, Object Storage se crea primero y Sports recibe su URL, `DB_PASSWORD` como referencia al secreto y el socket de Cloud SQL.
 
-Hotel, Cine y OpenTelemetry quedan vacíos hasta que alguien confirme las URL. El CRUD no las necesita. `GET /api/v2/flujo/...` falla si Hotel, Cine u Object Storage no responden. Sports no abre el puerto hasta que MySQL acepta la conexión, porque `src/index.ts` escucha después de `AppDataSource.initialize()`.
+`POST /api/v3/torneos/:id/artifact` solo necesita MySQL y Object Storage. `GET /api/v2/flujo/...` sigue siendo el flujo histórico: falla si Hotel, Cine u Object Storage no responden. Hotel, Cine y OpenTelemetry quedan vacíos hasta que alguien confirme las URL. Sports no abre el puerto hasta que MySQL acepta la conexión, porque `src/index.ts` escucha después de `AppDataSource.initialize()`.
 
 ## Prerrequisitos
 

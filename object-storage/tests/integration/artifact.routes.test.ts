@@ -349,6 +349,33 @@ describe("Rutas de artifacts", () => {
     await app.close();
   });
 
+  it("guarda un artifact V3 sin habitacion ni pelicula", async () => {
+    const app = buildApp();
+    const v3Artifact = {
+      traceId: "trace-1",
+      torneo: { id: 1, nombre: "Torneo Universitario" },
+    };
+
+    const respuesta = await app.inject({
+      method: "POST",
+      url: "/api/v2/artifacts",
+      headers: {
+        "x-trace-id": "trace-1",
+      },
+      payload: v3Artifact,
+    });
+
+    expect(respuesta.statusCode).toBe(201);
+    expect(mocks.save).toHaveBeenCalledWith(
+      JSON.stringify(v3Artifact, null, 2),
+      expect.objectContaining({ contentType: "application/json" }),
+    );
+    expect(mocks.save.mock.calls[0]?.[0]).not.toContain("habitacion");
+    expect(mocks.save.mock.calls[0]?.[0]).not.toContain("pelicula");
+
+    await app.close();
+  });
+
   it("responde 503 en POST si el bucket no está configurado", async () => {
     delete process.env.GCS_BUCKET_NAME;
     const app = buildApp();
