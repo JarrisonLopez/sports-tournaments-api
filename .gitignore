@@ -17,6 +17,11 @@ PROJECT_CONTEXT.md
 *.tfvars.json
 !*.tfvars.example
 
+# Backend real. backend.hcl.example sí se versiona.
+# .terraform.lock.hcl no coincide con este nombre.
+backend.hcl
+!backend.hcl.example
+
 # Overrides locales
 override.tf
 override.tf.json

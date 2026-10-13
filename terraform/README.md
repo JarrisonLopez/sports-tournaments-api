@@ -14,6 +14,8 @@ terraform/
 ├── outputs.tf
 ├── main.tf
 ├── terraform.tfvars.example
+├── backend.hcl.example
+├── bootstrap/
 └── modules/
     ├── project_services/
     ├── artifact_registry/
@@ -66,7 +68,7 @@ Hotel, Cine y OpenTelemetry quedan vacíos hasta que alguien confirme las URL. E
 
 ## Prerrequisitos
 
-- Terraform `>= 1.9.0, < 2.0.0` y provider `hashicorp/google` `~> 6.0`. La raíz lo declara en `versions.tf` y cada módulo repite `required_providers` con la misma restricción. El parche exacto aparecerá en `.terraform.lock.hcl` solo después de un init autorizado.
+- Terraform `>= 1.9.0, < 2.0.0` y provider `hashicorp/google` `~> 6.0`. La raíz y cada módulo lo declaran. `.terraform.lock.hcl` fija el provider en 6.50.0.
 - Una identidad con permiso para crear estos recursos. Esta carpeta no trae credenciales ni un archivo de cuenta de servicio.
 - El provider se configura solo con `project_id` y `region`.
 - Confirmar que el nombre `sports-demo-mysql` no sigue reservado por la instancia anterior.
@@ -101,7 +103,34 @@ Al destruir la instancia, el usuario creado fuera de Terraform se va con ella. N
 
 ## Backend remoto
 
-Sigue pendiente. No hay bloque `backend`. Un backend GCS necesita un bucket de estado creado aparte, con versionado, y ese bucket no debe entrar en el destroy de esta demo. `.terraform.lock.hcl` se versiona cuando exista. El estado local no debe commitearse: `.gitignore` ya cubre `.terraform/`, `*.tfstate`, el lock de estado y los planes binarios.
+El stack principal sigue sin bloque `backend`. `versions.tf` no puede usar `var.bucket`: un bloque `backend` solo acepta constantes, y un bloque activo cambiaría el init que ya validó esta carpeta en local.
+
+El bucket se declara aparte, en `bootstrap/`. El ejemplo de conexión está en `backend.hcl.example`:
+
+```hcl
+bucket = "sports-tournaments-multicloud-tfstate"
+prefix = "entrega3/main"
+```
+
+Ese nombre no es el bucket de artifacts. `backend.hcl` real está ignorado. El ejemplo se versiona.
+
+Cuando el bucket exista y haya autorización, la activación prevista es añadir en `versions.tf` un bloque vacío y volver a inicializar solo con el archivo de configuración:
+
+```hcl
+terraform {
+  backend "gcs" {}
+}
+```
+
+```bash
+terraform init -backend-config=backend.hcl
+```
+
+`-backend-config` rellena `bucket` y `prefix` porque el bloque no puede leer variables. Ese init no está autorizado ahora. No migra estado hasta que se ejecute, y no debe apuntar a un bucket inexistente.
+
+GitHub Actions, en una fase posterior, usará el mismo backend. El workflow escribirá `backend.hcl` en el runner a partir de variables del environment, sin commitearlo, y autenticará con Workload Identity Federation. La identidad de CI necesita, solo sobre el bucket de estado, permisos para leer, listar, crear, actualizar y borrar objetos. El rol predefinido que cubre ese conjunto es `roles/storage.objectAdmin` concedido en ese bucket, no en el proyecto. No hace falta `roles/storage.admin`, `roles/editor` ni `roles/owner`.
+
+La federación todavía no se crea. Cuando se autorice, el pool OIDC de GitHub debe limitar el repositorio `JarrisonLopez/sports-tournaments-api` y la rama que vaya a aplicar. Una condición típica exige `assertion.repository` y `assertion.ref` iguales a esa rama. No se usarán llaves JSON: no caducan con el job, se pueden copiar del runner y no distinguen la rama.
 
 ## Costos
 
@@ -110,6 +139,8 @@ Nada de esta carpeta ha creado recursos. Cuando un apply autorizado cree Cloud S
 Cloud Run queda en mínimo 0 y máximo 2, con CPU solo durante el arranque y las peticiones. No factura instancias quietas. Las APIs habilitadas se quedan habilitadas al destruir el stack; habilitarlas no sustituye el costo de Cloud SQL.
 
 Entre usos, `database_activation_policy = NEVER` detiene el cómputo y conserva el disco. Volver a `ALWAYS` antes de usar la API.
+
+El bucket de estado, cuando exista, solo factura almacenamiento Standard. Con un archivo de estado pequeño y unas diez generaciones, el cargo esperado queda en centavos al mes.
 
 ## Destrucción controlada
 
@@ -122,7 +153,11 @@ Con el ejemplo actual:
 - Cloud Run lleva `deletion_protection = false` dentro del módulo.
 - Las APIs no se desactivan.
 
-El bucket de estado, cuando exista en otra configuración, no forma parte de este destroy.
+El bucket de estado no entra en ese destroy. Está en `bootstrap/`, con otro estado, `prevent_destroy` y `force_destroy = false`. Conservarlo después de destruir la API mantiene el historial del estado y un costo de almacenamiento pequeño.
+
+Si una escritura del estado sale mal, el versionado guarda la generación anterior del objeto `entrega3/main/default.tfstate`. Recuperarla consiste en restaurar esa generación como objeto vivo y revisar el resultado antes de otro apply. Si se pierden todas las generaciones, Terraform deja de conocer los IDs. Los recursos seguirían en GCP y un apply posterior intentaría crearlos de nuevo. La salida sería importarlos, en un procedimiento aparte.
+
+Borrar el bucket de estado al cerrar la entrega también es aparte: el stack principal ya debe estar destruido o migrado, y alguien tiene que autorizar quitar `prevent_destroy`, vaciar las generaciones y destruir `bootstrap/`.
 
 ## Limitaciones pendientes
 
@@ -133,7 +168,7 @@ El bucket de estado, cuando exista en otra configuración, no forma parte de est
 - El acceso anónimo está en false. Pasarlo a true concede `roles/run.invoker` a `allUsers`. Object Storage no autentica `x-trace-id`. Una política de organización puede bloquear `allUsers`; no hay un atajo en esta configuración.
 - Workload Identity Federation de GitHub Actions no está creada. Faltan el pool, el provider OIDC y el binding. No hay llaves JSON.
 - Puede hacer falta confirmar, en el primer plan, que el agente de Cloud Run del proyecto puede leer Artifact Registry y que los límites de las sondas de arranque son válidos. Sports espera hasta unos 120 segundos a que el puerto abra, porque no escucha hasta conectar con MySQL.
-- El schema del provider 6.49 documenta `deletion_protection` en Cloud Run y queda en false en el módulo. El parche concreto del provider sigue sin fijarse porque no existe `.terraform.lock.hcl`.
+- El schema del provider 6.50, fijado en `.terraform.lock.hcl`, documenta `deletion_protection` en Cloud Run. En el módulo queda en false.
 
 ## Qué se puede revisar sin desplegar
 
@@ -143,6 +178,6 @@ Sin `init` ni credenciales se puede leer la configuración y comprobar que:
 - no hay VPC ni conector;
 - Cloud Run no se instancia con `deploy_applications = false`;
 - Sports apunta a Object Storage y Object Storage no apunta a Sports;
-- `.gitignore` sigue ignorando estado, tfvars reales y planes, y sigue permitiendo `*.tfvars.example` y `.terraform.lock.hcl`.
+- `.gitignore` ignora estado, tfvars reales, `backend.hcl` real y planes. Siguen versionables `*.tfvars.example`, `backend.hcl.example` y `.terraform.lock.hcl`.
 
-`terraform fmt`, `terraform init -backend=false` y `terraform validate` no se ejecutaron en esta revisión: Terraform no está instalado en el equipo. Instalarlo y repetir esos comandos es el paso siguiente, todavía sin `plan`.
+El stack principal ya pasó `terraform fmt`, `terraform init -backend=false` y `terraform validate` con el provider 6.50.0. `bootstrap/` no se ha inicializado: sin ese init no hay `terraform validate` de esa carpeta. Ninguno de los dos resultados sustituye un `plan`.

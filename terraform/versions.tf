@@ -8,8 +8,7 @@ terraform {
     }
   }
 
-  # Sin backend remoto en esta fase. Un backend GCS exigiría un bucket que
-  # todavía no existe. El bootstrap del estado se implementa después, con
-  # autorización. .terraform.lock.hcl se versiona cuando un init autorizado
-  # lo genere.
+  # El bloque backend "gcs" no está activo. El bucket todavía no existe y
+  # un backend parcial obligaría a otro init. El ejemplo está en
+  # backend.hcl.example. El bucket se declara en bootstrap/.
 }
