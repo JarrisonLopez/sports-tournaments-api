@@ -10,7 +10,7 @@ variable "services" {
     "run.googleapis.com",
     "sqladmin.googleapis.com",
     "artifactregistry.googleapis.com",
-    "storage.googleapis.com",
+    # storage.googleapis.com la administra terraform/bootstrap/.
     "secretmanager.googleapis.com",
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
