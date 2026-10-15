@@ -1,7 +1,50 @@
+# Se instalan y compilan dentro de la imagen
 node_modules
 dist
-coverage
+
+# Control de versiones y CI
 .git
+.github
 .gitignore
+
+# Las pruebas no entran en tsc ni en el arranque
+tests
+coverage
+vitest.config.mts
+vitest.*.mts
+
+# Fuera de la imagen de Sports API
+terraform
+terraform/
+object-storage
+object-storage/
+k8s
+docker-compose.yml
+*.md
+
+# Secretos y credenciales locales
 .env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*credentials*.json
+*service-account*.json
+*serviceAccount*.json
+application_default_credentials.json
+
+# Estado y variables de Terraform que pudieran quedar fuera de terraform/
+*.tf
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+backend.hcl
+tfplan
+tfplan.*
+*.tfplan
+crash.log
+crash.*.log
+
 npm-debug.log
