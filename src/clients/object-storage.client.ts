@@ -1,3 +1,5 @@
+import { GoogleAuth, IdTokenClient } from "google-auth-library";
+
 export interface FlowArtifact {
   traceId: string;
   torneo: unknown;
@@ -27,6 +29,15 @@ export class ObjectStorageRequestError extends Error {
   }
 }
 
+export class ObjectStorageAuthError extends Error {
+  constructor(cause?: unknown) {
+    super("No se pudo obtener el token de identidad para Object Storage", {
+      cause,
+    });
+    this.name = "ObjectStorageAuthError";
+  }
+}
+
 export interface ArtifactReference {
   bucket: string;
   object: string;
@@ -43,13 +54,19 @@ export async function saveArtifact(
   }
 
   const baseUrl = objectStorageApiUrl.trim().replace(/\/+$/, "");
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "x-trace-id": traceId,
+  };
+  const audience = cloudRunServiceAudience(baseUrl);
+
+  if (audience) {
+    headers.authorization = await cloudRunAuthorization(audience);
+  }
 
   const response = await fetch(`${baseUrl}/api/v2/artifacts`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-trace-id": traceId,
-    },
+    headers,
     body: JSON.stringify(artifact),
   });
 
@@ -58,4 +75,54 @@ export async function saveArtifact(
   }
 
   return (await response.json()) as ArtifactReference;
+}
+
+const CLOUD_RUN_HOST = "run.app";
+
+let googleAuth: GoogleAuth | undefined;
+const idTokenClients = new Map<string, IdTokenClient>();
+
+function cloudRunServiceAudience(baseUrl: string): string | undefined {
+  let url: URL;
+
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return undefined;
+  }
+
+  const hostname = url.hostname.toLowerCase();
+
+  if (hostname !== CLOUD_RUN_HOST && !hostname.endsWith(`.${CLOUD_RUN_HOST}`)) {
+    return undefined;
+  }
+
+  return url.origin;
+}
+
+async function cloudRunAuthorization(audience: string): Promise<string> {
+  try {
+    let client = idTokenClients.get(audience);
+
+    if (!client) {
+      googleAuth ??= new GoogleAuth();
+      client = await googleAuth.getIdTokenClient(audience);
+      idTokenClients.set(audience, client);
+    }
+
+    const headers = await client.getRequestHeaders(audience);
+    const authorization = headers.Authorization ?? headers.authorization;
+
+    if (!authorization) {
+      throw new ObjectStorageAuthError();
+    }
+
+    return authorization;
+  } catch (error) {
+    if (error instanceof ObjectStorageAuthError) {
+      throw error;
+    }
+
+    throw new ObjectStorageAuthError(error);
+  }
 }
