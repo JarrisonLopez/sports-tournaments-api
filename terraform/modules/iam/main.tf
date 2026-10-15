@@ -69,7 +69,26 @@ resource "google_storage_bucket_iam_member" "deploy_tfstate" {
   member = "serviceAccount:${google_service_account.deploy.email}"
 }
 
+resource "google_project_iam_member" "deploy_run_developer" {
+  project = var.project_id
+  role    = "roles/run.developer"
+  member  = "serviceAccount:${google_service_account.deploy.email}"
+}
+
+resource "google_service_account_iam_member" "deploy_act_as_sports" {
+  service_account_id = google_service_account.sports.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.deploy.email}"
+}
+
+resource "google_service_account_iam_member" "deploy_act_as_object_storage" {
+  service_account_id = google_service_account.object_storage.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.deploy.email}"
+}
+
 # El pool y el provider WIF ya existen fuera de este módulo.
-# deploy publica imágenes y gestiona el estado; no ejecuta las apps.
-# Cloud Run, Cloud SQL y Secret Manager para CI/CD van en otra tarea.
-# sports y object_storage no reciben workloadIdentityUser.
+# deploy actualiza Cloud Run con run.developer y ActAs sobre las runtime.
+# run.developer no incluye setIamPolicy del binding run.invoker; si el apply
+# falla al refrescar ese IAM, haría falta un permiso aparte (no se concede aquí).
+# No hay run.admin, editor, owner ni secretAccessor para deploy.
