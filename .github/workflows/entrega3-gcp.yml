@@ -52,6 +52,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Diagnose GitHub OIDC claims (temporary)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            const payloadPart = token.split('.')[1];
+            const normalized = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+            const payload = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+            core.info(`sub=${payload.sub ?? ''}`);
+            core.info(`repository=${payload.repository ?? ''}`);
+            core.info(`ref=${payload.ref ?? ''}`);
+            core.info(`event_name=${payload.event_name ?? ''}`);
+
       - name: Authenticate to Google Cloud (Workload Identity Federation)
         id: auth
         uses: google-github-actions/auth@v2
