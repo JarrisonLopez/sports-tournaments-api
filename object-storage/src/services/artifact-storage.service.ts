@@ -3,13 +3,23 @@ import { Storage } from "@google-cloud/storage";
 
 const storage = new Storage();
 
-export interface FlowArtifact {
+interface ArtifactBase {
   traceId: string;
   torneo: unknown;
-  habitacion: unknown;
-  pelicula: unknown;
   origen?: string;
 }
+
+export interface V2FlowArtifact extends ArtifactBase {
+  habitacion: unknown;
+  pelicula: unknown;
+}
+
+export interface V3FlowArtifact extends ArtifactBase {
+  habitacion?: never;
+  pelicula?: never;
+}
+
+export type FlowArtifact = V2FlowArtifact | V3FlowArtifact;
 
 export interface ArtifactReference {
   bucket: string;

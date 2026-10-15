@@ -1,0 +1,263 @@
+name: Entrega 3 GCP Deploy
+
+# Despliegue manual. WIF solo autoriza assertion.sub de refs/heads/main.
+# No usar environment: aquí: cambiaría el subject OIDC y rompería el binding.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_deploy:
+        description: 'Escribe DEPLOY para confirmar el despliegue desde main'
+        required: true
+        type: string
+
+concurrency:
+  group: entrega3-gcp-terraform
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Build, publish and Terraform apply
+    runs-on: ubuntu-latest
+    # Sin environment: el subject OIDC debe ser
+    # repo:JarrisonLopez/sports-tournaments-api:ref:refs/heads/main
+
+    env:
+      PROJECT_ID: sports-tournaments-multicloud
+      REGION: us-central1
+      AR_REPOSITORY: sports-demo-images
+      TF_STATE_BUCKET: sports-tournaments-multicloud-tfstate
+      TF_STATE_PREFIX: entrega3/main
+      WIF_PROVIDER: projects/171179411205/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+      DEPLOY_SA: sports-demo-deploy@sports-tournaments-multicloud.iam.gserviceaccount.com
+
+    steps:
+      - name: Require main and explicit DEPLOY confirmation
+        env:
+          CONFIRM_DEPLOY: ${{ inputs.confirm_deploy }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Este workflow solo puede desplegar desde refs/heads/main (recibido: ${GITHUB_REF})."
+            exit 1
+          fi
+          if [ "${CONFIRM_DEPLOY}" != "DEPLOY" ]; then
+            echo "Confirmación inválida. Escribe exactamente DEPLOY."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SA }}
+          token_format: access_token
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Log in to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Build and push container images
+        id: images
+        run: |
+          set -euo pipefail
+          REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}"
+          SPORTS_IMAGE="${REGISTRY}/sports-api-v3:${GITHUB_SHA}"
+          STORAGE_IMAGE="${REGISTRY}/object-storage-v3:${GITHUB_SHA}"
+
+          echo "Building Sports API from ./Dockerfile"
+          docker build -f Dockerfile -t "${SPORTS_IMAGE}" .
+
+          echo "Building Object Storage from ./object-storage/Dockerfile"
+          docker build -f object-storage/Dockerfile -t "${STORAGE_IMAGE}" object-storage
+
+          docker push "${SPORTS_IMAGE}"
+          docker push "${STORAGE_IMAGE}"
+
+          echo "sports_image=${SPORTS_IMAGE}" >> "${GITHUB_OUTPUT}"
+          echo "object_storage_image=${STORAGE_IMAGE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: Terraform fmt
+        working-directory: terraform
+        run: terraform fmt -check -recursive
+
+      - name: Write Terraform backend and variable files
+        working-directory: terraform
+        env:
+          SPORTS_IMAGE: ${{ steps.images.outputs.sports_image }}
+          STORAGE_IMAGE: ${{ steps.images.outputs.object_storage_image }}
+        run: |
+          set -euo pipefail
+          cat > backend.hcl <<EOF
+          bucket = "${TF_STATE_BUCKET}"
+          prefix = "${TF_STATE_PREFIX}"
+          EOF
+
+          # terraform.tfvars local no está en Git. Valores no secretos de la Entrega 3.
+          cat > terraform.tfvars <<EOF
+          project_id      = "${PROJECT_ID}"
+          project_number  = "171179411205"
+          region          = "${REGION}"
+          environment     = "demo"
+          resource_prefix = "sports-demo"
+
+          workload_identity_pool_id = "github-actions-pool"
+          github_repository         = "JarrisonLopez/sports-tournaments-api"
+          github_deploy_ref         = "refs/heads/main"
+
+          database_name           = "sports_db"
+          database_user           = "sports_user"
+          database_version        = "MYSQL_8_4"
+          database_tier           = "db-f1-micro"
+          database_disk_size_gb   = 10
+          database_deletion_protection = false
+          database_activation_policy   = "ALWAYS"
+
+          sports_image         = "${SPORTS_IMAGE}"
+          object_storage_image = "${STORAGE_IMAGE}"
+
+          sports_min_instances         = 0
+          object_storage_min_instances = 0
+
+          artifacts_bucket_name       = "sports-tournaments-multicloud-demo-artifacts"
+          terraform_state_bucket_name = "${TF_STATE_BUCKET}"
+          artifacts_force_destroy     = true
+
+          deploy_applications = true
+
+          sports_allow_unauthenticated         = false
+          object_storage_allow_unauthenticated = false
+
+          hotel_api_url               = ""
+          cine_api_url                = ""
+          otel_exporter_otlp_endpoint = ""
+          EOF
+
+      - name: Terraform init
+        working-directory: terraform
+        run: terraform init -input=false -backend-config=backend.hcl
+
+      - name: Terraform validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform plan
+        working-directory: terraform
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Validate Terraform deployment plan
+        working-directory: terraform
+        run: |
+          set -euo pipefail
+          terraform show -json tfplan > tfplan.json
+          python3 <<'PY'
+          import json
+          import sys
+
+          ALLOWED_UPDATES = {
+              "module.sports_api[0].google_cloud_run_v2_service.service",
+              "module.object_storage_service[0].google_cloud_run_v2_service.service",
+          }
+
+          with open("tfplan.json", encoding="utf-8") as handle:
+              plan = json.load(handle)
+
+          rejected = []
+          allowed_updates = []
+
+          for change in plan.get("resource_changes") or []:
+              address = change.get("address") or "<unknown>"
+              actions = list(change.get("change", {}).get("actions") or [])
+
+              if actions == ["no-op"]:
+                  continue
+
+              if actions == ["update"] and address in ALLOWED_UPDATES:
+                  allowed_updates.append(address)
+                  continue
+
+              rejected.append(f"{address}: {','.join(actions) or '<none>'}")
+
+          if allowed_updates:
+              print("Allowed Cloud Run service updates:")
+              for address in allowed_updates:
+                  print(f"  - {address}")
+
+          if rejected:
+              print("Rejected Terraform plan changes:", file=sys.stderr)
+              for item in rejected:
+                  print(f"  - {item}", file=sys.stderr)
+              print(
+                  "Only no-op or update of the two existing Cloud Run services is allowed.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          print("Plan validation passed: no unauthorized creates, deletes, or replaces.")
+          PY
+
+      - name: Terraform apply
+        working-directory: terraform
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Read Terraform outputs
+        id: tfouts
+        working-directory: terraform
+        run: |
+          set -euo pipefail
+          sports_url="$(terraform output -raw sports_api_url)"
+          storage_url="$(terraform output -raw object_storage_url)"
+          echo "sports_api_url=${sports_url}" >> "${GITHUB_OUTPUT}"
+          echo "object_storage_url=${storage_url}" >> "${GITHUB_OUTPUT}"
+          echo "Sports API URL: ${sports_url}"
+          echo "Object Storage URL: ${storage_url}"
+
+      - name: Verify Cloud Run services are Ready
+        run: |
+          set -euo pipefail
+          for service in sports-demo-api sports-demo-storage; do
+            ready="$(gcloud run services describe "${service}" \
+              --project="${PROJECT_ID}" \
+              --region="${REGION}" \
+              --format=json | jq -r '.status.conditions[] | select(.type=="Ready") | .status')"
+            echo "${service} Ready=${ready}"
+            if [ "${ready}" != "True" ]; then
+              echo "El servicio ${service} no está Ready=True."
+              exit 1
+            fi
+          done
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "## Entrega 3 GCP Deploy" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Branch: \`${GITHUB_REF}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Commit: \`${GITHUB_SHA}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Sports image: \`${{ steps.images.outputs.sports_image }}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Object Storage image: \`${{ steps.images.outputs.object_storage_image }}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Sports API URL: \`${{ steps.tfouts.outputs.sports_api_url }}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Object Storage URL: \`${{ steps.tfouts.outputs.object_storage_url }}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Job result: \`${{ job.status }}\`" >> "${GITHUB_STEP_SUMMARY}"

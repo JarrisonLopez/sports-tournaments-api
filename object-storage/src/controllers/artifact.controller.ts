@@ -36,22 +36,57 @@ function optionalOrigen(body: object): string | undefined | null {
   return origen;
 }
 
-function isArtifactBody(body: unknown): body is {
-  traceId: unknown;
-  torneo: unknown;
-  habitacion: unknown;
-  pelicula: unknown;
-} {
+type ClassifiedArtifact =
+  | {
+      kind: "v2";
+      traceId: unknown;
+      torneo: unknown;
+      habitacion: unknown;
+      pelicula: unknown;
+    }
+  | {
+      kind: "v3";
+      traceId: unknown;
+      torneo: unknown;
+    };
+
+function classifyArtifact(body: unknown): ClassifiedArtifact | null {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return false;
+    return null;
   }
 
-  return (
-    Object.hasOwn(body, "traceId") &&
-    Object.hasOwn(body, "torneo") &&
-    Object.hasOwn(body, "habitacion") &&
-    Object.hasOwn(body, "pelicula")
-  );
+  if (!Object.hasOwn(body, "traceId") || !Object.hasOwn(body, "torneo")) {
+    return null;
+  }
+
+  const record = body as {
+    traceId: unknown;
+    torneo: unknown;
+    habitacion?: unknown;
+    pelicula?: unknown;
+  };
+  const hasHabitacion = Object.hasOwn(body, "habitacion");
+  const hasPelicula = Object.hasOwn(body, "pelicula");
+
+  if (hasHabitacion && hasPelicula) {
+    return {
+      kind: "v2",
+      traceId: record.traceId,
+      torneo: record.torneo,
+      habitacion: record.habitacion,
+      pelicula: record.pelicula,
+    };
+  }
+
+  if (!hasHabitacion && !hasPelicula) {
+    return {
+      kind: "v3",
+      traceId: record.traceId,
+      torneo: record.torneo,
+    };
+  }
+
+  return null;
 }
 
 function bindTraceLog(
@@ -113,25 +148,27 @@ export async function createArtifact(
 
   const body = request.body;
 
-  if (!isArtifactBody(body)) {
+  const classified = classifyArtifact(body);
+
+  if (!classified) {
     return reply.code(400).send({
       message: "El artifact no contiene los campos requeridos",
     });
   }
 
-  if (!isValidTraceId(body.traceId)) {
+  if (!isValidTraceId(classified.traceId)) {
     return reply.code(400).send({
       message: "El trace id no es válido",
     });
   }
 
-  if (traceId !== body.traceId) {
+  if (traceId !== classified.traceId) {
     return reply.code(400).send({
       message: "El x-trace-id no coincide con traceId del artifact",
     });
   }
 
-  const origen = optionalOrigen(body);
+  const origen = optionalOrigen(body as object);
 
   if (origen === null) {
     return reply.code(400).send({
@@ -139,13 +176,20 @@ export async function createArtifact(
     });
   }
 
-  const artifact: FlowArtifact = {
-    traceId: body.traceId,
-    ...(origen !== undefined ? { origen } : {}),
-    torneo: body.torneo,
-    habitacion: body.habitacion,
-    pelicula: body.pelicula,
-  };
+  const artifact: FlowArtifact =
+    classified.kind === "v2"
+      ? {
+          traceId: classified.traceId,
+          ...(origen !== undefined ? { origen } : {}),
+          torneo: classified.torneo,
+          habitacion: classified.habitacion,
+          pelicula: classified.pelicula,
+        }
+      : {
+          traceId: classified.traceId,
+          ...(origen !== undefined ? { origen } : {}),
+          torneo: classified.torneo,
+        };
 
   try {
     if (!isBucketConfigured()) {

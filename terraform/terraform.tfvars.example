@@ -1,0 +1,57 @@
+project_id      = "sports-tournaments-multicloud"
+project_number  = "171179411205"
+region          = "us-central1"
+environment     = "demo"
+resource_prefix = "sports-demo"
+
+# Pool WIF existente. El binding de deploy solo acepta este subject de main.
+workload_identity_pool_id = "github-actions-pool"
+github_repository         = "JarrisonLopez/sports-tournaments-api"
+github_deploy_ref         = "refs/heads/main"
+
+database_name = "sports_db"
+database_user = "sports_user"
+
+# Confirmados en la documentación de Cloud SQL y en el provider google 6.49:
+# database_version MYSQL_8_4, edition ENTERPRISE (fijada en el módulo) y
+# tier db-f1-micro. El disco PD_SSD de 10 GB es el mínimo de ese tipo.
+# Esto no sustituye un terraform plan.
+database_version      = "MYSQL_8_4"
+database_tier         = "db-f1-micro"
+database_disk_size_gb = 10
+
+# Referencias ilustrativas. Este esqueleto no publica estas imágenes.
+sports_image         = "REGION-docker.pkg.dev/PROJECT/REPOSITORY/sports-tournaments-api:TAG"
+object_storage_image = "REGION-docker.pkg.dev/PROJECT/REPOSITORY/object-storage:TAG"
+
+sports_min_instances         = 0
+object_storage_min_instances = 0
+
+# Nombre global. Si Cloud Storage lo rechaza por estar ocupado, hay que
+# elegir otro. No es el bucket del estado de Terraform.
+artifacts_bucket_name = "sports-tournaments-multicloud-demo-artifacts"
+
+# Bucket del bootstrap. Este stack no lo crea; solo concede objectAdmin a deploy.
+terraform_state_bucket_name = "sports-tournaments-multicloud-tfstate"
+
+# true borra los JSON del bucket durante terraform destroy.
+artifacts_force_destroy = true
+
+# false en los dos bloqueos, el de Terraform y el de Cloud SQL, para que
+# destroy no pida un paso manual. También borra los datos de MySQL.
+database_deletion_protection = false
+
+# ALWAYS factura cómputo mientras la instancia exista. NEVER lo apaga.
+database_activation_policy = "ALWAYS"
+
+# Los servicios de Cloud Run no se crean hasta una fase posterior, cuando
+# ya existan imágenes, la versión del secreto y el usuario de MySQL.
+deploy_applications = false
+
+sports_allow_unauthenticated         = false
+object_storage_allow_unauthenticated = false
+
+# Vacías a propósito. Hotel, Cine y el collector no están verificados aquí.
+hotel_api_url                 = ""
+cine_api_url                  = ""
+otel_exporter_otlp_endpoint   = ""

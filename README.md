@@ -7,6 +7,12 @@ Este repositorio contiene la evolución del proyecto académico de torneos depor
 
 La Entrega 2 no sustituye las rutas originales. Las conserva y agrega la superficie `/api/v2`.
 
+# Entrega 3 — API V3 individual
+
+La Entrega 3 es individual. V1 y V2 se conservan. V3 no llama a Hotel ni a Cine.
+
+`POST /api/v3/torneos/:id/artifact` lee el torneo en MySQL y guarda un artifact con `traceId` y ese torneo en Object Storage. La infraestructura prevista está en `terraform/` y todavía no se ha aplicado: no hay despliegue de esta versión en Cloud Run.
+
 El campo `version` de `package.json` sigue en `1.0.0`. “API V2” se refiere al prefijo HTTP `/api/v2`, no a un release SemVer 2.0.0.
 
 ## Evolución del proyecto

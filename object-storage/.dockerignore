@@ -1,7 +1,31 @@
+# Se instalan y compilan dentro de la imagen
 node_modules
+node_modules/
 dist
-coverage
+dist/
+
+# Control de versiones
 .git
+.git/
 .gitignore
+
+# Las pruebas no entran en tsc ni en el arranque
+tests
+tests/
+coverage
+coverage/
+vitest.config.mts
+
+# Secretos y credenciales locales
 .env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*credentials*.json
+*service-account*.json
+*serviceAccount*.json
+application_default_credentials.json
+
 npm-debug.log

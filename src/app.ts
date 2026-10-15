@@ -7,6 +7,7 @@ import { canchaRoutes } from "./routes/cancha.routes";
 import { jugadorRoutes } from "./routes/jugador.routes";
 import { healthRoutes } from "./routes/health.routes";
 import { v2Routes } from "./routes/v2";
+import { v3Routes } from "./routes/v3";
 import {
   createHttpMetrics,
   registerRedMetrics,
@@ -42,6 +43,9 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.register(v2Routes, {
     prefix: "/api/v2",
+  });
+  app.register(v3Routes, {
+    prefix: "/api/v3",
   });
 
   return app;

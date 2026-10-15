@@ -1,0 +1,8 @@
+project_id = "sports-tournaments-multicloud"
+region     = "us-central1"
+
+# Tiene que ser único en Cloud Storage. No reutilizar el bucket de artifacts.
+bucket_name = "sports-tournaments-multicloud-tfstate"
+
+# Conserva al menos 10 generaciones más nuevas antes de borrar una archivada.
+noncurrent_versions_to_keep = 10
