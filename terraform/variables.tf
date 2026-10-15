@@ -8,6 +8,50 @@ variable "project_id" {
   }
 }
 
+variable "project_number" {
+  description = "Número del proyecto GCP. Se usa solo para el principal WIF de la cuenta de deploy."
+  type        = string
+  default     = "171179411205"
+
+  validation {
+    condition     = can(regex("^[0-9]{6,12}$", var.project_number))
+    error_message = "project_number debe ser el número numérico del proyecto de GCP."
+  }
+}
+
+variable "workload_identity_pool_id" {
+  description = "ID del pool WIF existente. No se crea ni se modifica desde este stack."
+  type        = string
+  default     = "github-actions-pool"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{2,62}[a-z0-9]$", var.workload_identity_pool_id))
+    error_message = "workload_identity_pool_id debe ser un ID de pool de Workload Identity."
+  }
+}
+
+variable "github_repository" {
+  description = "Repositorio de GitHub autorizado en el subject OIDC, con forma OWNER/REPO."
+  type        = string
+  default     = "JarrisonLopez/sports-tournaments-api"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
+    error_message = "github_repository debe tener forma OWNER/REPO."
+  }
+}
+
+variable "github_deploy_ref" {
+  description = "Ref de Git autorizada a impersonar la cuenta de deploy. Solo se acepta refs/heads/main."
+  type        = string
+  default     = "refs/heads/main"
+
+  validation {
+    condition     = var.github_deploy_ref == "refs/heads/main"
+    error_message = "github_deploy_ref debe ser exactamente refs/heads/main."
+  }
+}
+
 variable "region" {
   description = "Región prevista para recursos regionales como Cloud Run y Artifact Registry."
   type        = string

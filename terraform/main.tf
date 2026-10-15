@@ -10,8 +10,10 @@ locals {
   db_password_secret_id             = "${var.resource_prefix}-db-password"
   sports_service_account_id         = "${var.resource_prefix}-api"
   object_storage_service_account_id = "${var.resource_prefix}-storage"
+  deploy_service_account_id         = "${var.resource_prefix}-deploy"
   sports_service_name               = "${var.resource_prefix}-api"
   object_storage_service_name       = "${var.resource_prefix}-storage"
+  github_actions_deploy_subject     = "repo:${var.github_repository}:ref:${var.github_deploy_ref}"
 
   otel_env = var.otel_exporter_otlp_endpoint != "" ? {
     OTEL_EXPORTER_OTLP_ENDPOINT = var.otel_exporter_otlp_endpoint
@@ -85,8 +87,12 @@ module "iam" {
   source = "./modules/iam"
 
   project_id                = var.project_id
+  project_number            = var.project_number
   sports_account_id         = local.sports_service_account_id
   object_storage_account_id = local.object_storage_service_account_id
+  deploy_account_id         = local.deploy_service_account_id
+  workload_identity_pool_id = var.workload_identity_pool_id
+  github_actions_subject    = local.github_actions_deploy_subject
   db_password_secret_id     = module.secret_manager.secret_id
   artifacts_bucket_name     = module.cloud_storage.bucket_name
 

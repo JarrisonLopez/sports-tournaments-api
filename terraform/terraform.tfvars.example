@@ -1,7 +1,13 @@
 project_id      = "sports-tournaments-multicloud"
+project_number  = "171179411205"
 region          = "us-central1"
 environment     = "demo"
 resource_prefix = "sports-demo"
+
+# Pool WIF existente. El binding de deploy solo acepta este subject de main.
+workload_identity_pool_id = "github-actions-pool"
+github_repository         = "JarrisonLopez/sports-tournaments-api"
+github_deploy_ref         = "refs/heads/main"
 
 database_name = "sports_db"
 database_user = "sports_user"

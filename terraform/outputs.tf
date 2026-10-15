@@ -37,3 +37,8 @@ output "object_storage_service_account" {
   description = "Cuenta de ejecución de Object Storage."
   value       = module.iam.object_storage_service_account_email
 }
+
+output "deploy_service_account" {
+  description = "Cuenta de CI/CD de Entrega 3. Solo main puede impersonarla vía WIF."
+  value       = module.iam.deploy_service_account_email
+}
