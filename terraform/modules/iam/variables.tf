@@ -54,15 +54,15 @@ variable "workload_identity_pool_id" {
 }
 
 variable "github_actions_subject" {
-  description = "Valor de assertion.sub de GitHub Actions autorizado a impersonar la cuenta de deploy. Debe ser exactamente la ref de main."
+  description = "Valor exacto de assertion.sub de GitHub Actions. Incluye OWNER@ID/REPO@ID y solo refs/heads/main."
   type        = string
 
   validation {
     condition = can(regex(
-      "^repo:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+:ref:refs/heads/main$",
+      "^repo:[A-Za-z0-9_.-]+@[0-9]+/[A-Za-z0-9_.-]+@[0-9]+:ref:refs/heads/main$",
       var.github_actions_subject,
     ))
-    error_message = "github_actions_subject debe ser repo:OWNER/REPO:ref:refs/heads/main."
+    error_message = "github_actions_subject debe ser repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:refs/heads/main."
   }
 }
 

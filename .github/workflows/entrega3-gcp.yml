@@ -138,6 +138,8 @@ jobs:
 
           workload_identity_pool_id = "github-actions-pool"
           github_repository         = "JarrisonLopez/sports-tournaments-api"
+          github_owner_id           = "140736138"
+          github_repository_id      = "1349259895"
           github_deploy_ref         = "refs/heads/main"
 
           database_name           = "sports_db"

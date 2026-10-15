@@ -31,13 +31,35 @@ variable "workload_identity_pool_id" {
 }
 
 variable "github_repository" {
-  description = "Repositorio de GitHub autorizado en el subject OIDC, con forma OWNER/REPO."
+  description = "Repositorio de GitHub con forma OWNER/REPO. Los IDs numéricos del subject OIDC van aparte."
   type        = string
   default     = "JarrisonLopez/sports-tournaments-api"
 
   validation {
     condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
     error_message = "github_repository debe tener forma OWNER/REPO."
+  }
+}
+
+variable "github_owner_id" {
+  description = "ID numérico del owner en el claim sub de GitHub Actions (OWNER@ID)."
+  type        = string
+  default     = "140736138"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_owner_id))
+    error_message = "github_owner_id debe ser un identificador numérico de GitHub."
+  }
+}
+
+variable "github_repository_id" {
+  description = "ID numérico del repositorio en el claim sub de GitHub Actions (REPO@ID)."
+  type        = string
+  default     = "1349259895"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id debe ser un identificador numérico de GitHub."
   }
 }
 

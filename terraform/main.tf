@@ -13,7 +13,10 @@ locals {
   deploy_service_account_id         = "${var.resource_prefix}-deploy"
   sports_service_name               = "${var.resource_prefix}-api"
   object_storage_service_name       = "${var.resource_prefix}-storage"
-  github_actions_deploy_subject     = "repo:${var.github_repository}:ref:${var.github_deploy_ref}"
+  # GitHub emite sub con IDs: repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:refs/heads/main
+  github_owner_name             = split("/", var.github_repository)[0]
+  github_repository_name        = split("/", var.github_repository)[1]
+  github_actions_deploy_subject = "repo:${local.github_owner_name}@${var.github_owner_id}/${local.github_repository_name}@${var.github_repository_id}:ref:${var.github_deploy_ref}"
 
   otel_env = var.otel_exporter_otlp_endpoint != "" ? {
     OTEL_EXPORTER_OTLP_ENDPOINT = var.otel_exporter_otlp_endpoint
