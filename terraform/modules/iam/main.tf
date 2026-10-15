@@ -87,8 +87,46 @@ resource "google_service_account_iam_member" "deploy_act_as_object_storage" {
   member             = "serviceAccount:${google_service_account.deploy.email}"
 }
 
-# El pool y el provider WIF ya existen fuera de este módulo.
-# deploy actualiza Cloud Run con run.developer y ActAs sobre las runtime.
-# run.developer no incluye setIamPolicy del binding run.invoker; si el apply
-# falla al refrescar ese IAM, haría falta un permiso aparte (no se concede aquí).
-# No hay run.admin, editor, owner ni secretAccessor para deploy.
+resource "google_project_iam_member" "deploy_cloudsql_viewer" {
+  project = var.project_id
+  role    = "roles/cloudsql.viewer"
+  member  = "serviceAccount:${google_service_account.deploy.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "deploy_secret_viewer" {
+  project   = var.project_id
+  secret_id = var.db_password_secret_id
+  role      = "roles/secretmanager.viewer"
+  member    = "serviceAccount:${google_service_account.deploy.email}"
+}
+
+resource "google_storage_bucket_iam_member" "deploy_artifacts_bucket_reader" {
+  bucket = var.artifacts_bucket_name
+  role   = "roles/storage.legacyBucketReader"
+  member = "serviceAccount:${google_service_account.deploy.email}"
+}
+
+resource "google_project_iam_member" "deploy_service_account_viewer" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountViewer"
+  member  = "serviceAccount:${google_service_account.deploy.email}"
+}
+
+resource "google_project_iam_member" "deploy_serviceusage_viewer" {
+  project = var.project_id
+  role    = "roles/serviceusage.serviceUsageViewer"
+  member  = "serviceAccount:${google_service_account.deploy.email}"
+}
+
+resource "google_project_iam_member" "deploy_security_reviewer" {
+  project = var.project_id
+  role    = "roles/iam.securityReviewer"
+  member  = "serviceAccount:${google_service_account.deploy.email}"
+}
+
+# Lecturas para terraform plan/refresh. secretAccessor no se concede.
+# Artifact Registry: deploy_writer ya permite get del repo sports-demo-images.
+# Pendiente: run.services.getIamPolicy (y setIamPolicy en apply) del binding
+# run.invoker; run.developer no los incluye y aquí no se añade run.admin.
+# El primer apply de estos bindings debe hacerlo una identidad admin: deploy
+# aún no puede concederse a sí misma roles de proyecto.
