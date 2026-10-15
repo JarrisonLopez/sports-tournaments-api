@@ -106,6 +106,13 @@ resource "google_cloud_run_v2_service" "service" {
       condition     = !strcontains(var.image, "REGION-docker.pkg.dev") && !contains(keys(var.env), "PORT")
       error_message = "La imagen sigue siendo ilustrativa, o env intenta definir PORT. Cloud Run asigna PORT a partir de container_port."
     }
+
+    # Provider google 6.50: la API rellena el scaling de SERVICIO con
+    # min_instance_count=0 y manual_instance_count=0. Cada plan propone
+    # 0 -> null sin cambiar el runtime. No es template.scaling: el mínimo
+    # y el máximo intencionales siguen en template.scaling y sí se planifican.
+    # El permadiff se corrige en google provider 7.x; no se sube en esta tarea.
+    ignore_changes = [scaling]
   }
 }
 
