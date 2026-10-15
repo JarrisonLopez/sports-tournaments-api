@@ -29,7 +29,7 @@ variable "service_account_email" {
 }
 
 variable "container_port" {
-  description = "Puerto del contenedor. El módulo publica la variable PORT con este mismo valor, que es el que leen src/index.ts y object-storage/src/index.ts."
+  description = "Puerto del contenedor. Cloud Run asigna PORT con este valor. Las aplicaciones lo leen en src/index.ts y object-storage/src/index.ts."
   type        = number
   default     = 8080
 

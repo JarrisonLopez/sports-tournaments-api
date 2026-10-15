@@ -46,11 +46,6 @@ resource "google_cloud_run_v2_service" "service" {
         cpu_idle = true
       }
 
-      env {
-        name  = "PORT"
-        value = tostring(var.container_port)
-      }
-
       dynamic "env" {
         for_each = { for key, value in var.env : key => value if trimspace(value) != "" }
 
@@ -109,7 +104,7 @@ resource "google_cloud_run_v2_service" "service" {
   lifecycle {
     precondition {
       condition     = !strcontains(var.image, "REGION-docker.pkg.dev") && !contains(keys(var.env), "PORT")
-      error_message = "La imagen sigue siendo ilustrativa, o env intenta redefinir PORT. Publica la imagen y deja que el módulo fije PORT."
+      error_message = "La imagen sigue siendo ilustrativa, o env intenta definir PORT. Cloud Run asigna PORT a partir de container_port."
     }
   }
 }
