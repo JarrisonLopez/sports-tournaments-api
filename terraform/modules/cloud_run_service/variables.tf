@@ -100,6 +100,20 @@ variable "allow_unauthenticated" {
   default     = false
 }
 
+variable "invoker_service_account_email" {
+  description = "Email de una cuenta de servicio que puede invocar este Cloud Run. Vacío no crea el binding. El miembro es serviceAccount, nunca allUsers."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.invoker_service_account_email == "" ||
+      can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]{4,28}[a-z0-9]\\.iam\\.gserviceaccount\\.com$", var.invoker_service_account_email))
+    )
+    error_message = "invoker_service_account_email debe estar vacío o ser el email de una cuenta de servicio de GCP."
+  }
+}
+
 variable "ingress" {
   description = "Tráfico que Cloud Run acepta. No concede por sí solo acceso anónimo."
   type        = string

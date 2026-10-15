@@ -123,3 +123,13 @@ resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
+
+resource "google_cloud_run_v2_service_iam_member" "service_invoker" {
+  count = var.invoker_service_account_email == "" ? 0 : 1
+
+  project  = var.project_id
+  location = google_cloud_run_v2_service.service.location
+  name     = google_cloud_run_v2_service.service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${var.invoker_service_account_email}"
+}

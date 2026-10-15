@@ -97,15 +97,16 @@ module "object_storage_service" {
   source = "./modules/cloud_run_service"
   count  = var.deploy_applications ? 1 : 0
 
-  project_id                = var.project_id
-  region                    = var.region
-  service_name              = local.object_storage_service_name
-  image                     = var.object_storage_image
-  service_account_email     = module.iam.object_storage_service_account_email
-  min_instance_count        = var.object_storage_min_instances
-  allow_unauthenticated     = var.object_storage_allow_unauthenticated
-  startup_failure_threshold = 3
-  labels                    = local.labels
+  project_id                    = var.project_id
+  region                        = var.region
+  service_name                  = local.object_storage_service_name
+  image                         = var.object_storage_image
+  service_account_email         = module.iam.object_storage_service_account_email
+  invoker_service_account_email = module.iam.sports_service_account_email
+  min_instance_count            = var.object_storage_min_instances
+  allow_unauthenticated         = var.object_storage_allow_unauthenticated
+  startup_failure_threshold     = 3
+  labels                        = local.labels
 
   env = merge(
     {
