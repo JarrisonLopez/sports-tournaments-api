@@ -75,3 +75,33 @@ variable "artifacts_bucket_name" {
   description = "Bucket cuyos objetos puede leer y escribir Object Storage."
   type        = string
 }
+
+variable "artifact_registry_location" {
+  description = "Región del repositorio Docker. No crea el repositorio."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z]+-[a-z]+[0-9]$", var.artifact_registry_location))
+    error_message = "artifact_registry_location debe tener forma de región de GCP."
+  }
+}
+
+variable "artifact_registry_repository_id" {
+  description = "ID corto del repositorio Docker existente. No crea el repositorio."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{1,61}[a-z0-9]$", var.artifact_registry_repository_id))
+    error_message = "artifact_registry_repository_id debe tener de 3 a 63 caracteres, en minúsculas, dígitos o guiones."
+  }
+}
+
+variable "terraform_state_bucket_name" {
+  description = "Bucket de estado del bootstrap. Este módulo no lo crea; solo concede IAM."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9_-]{1,61}[a-z0-9]$", var.terraform_state_bucket_name))
+    error_message = "terraform_state_bucket_name debe ser un nombre válido de bucket de Cloud Storage."
+  }
+}

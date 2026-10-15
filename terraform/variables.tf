@@ -185,6 +185,17 @@ variable "artifacts_bucket_name" {
   }
 }
 
+variable "terraform_state_bucket_name" {
+  description = "Nombre del bucket de estado creado por bootstrap/. Este stack no lo crea; solo concede IAM a la cuenta de deploy."
+  type        = string
+  default     = "sports-tournaments-multicloud-tfstate"
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9_-]{1,61}[a-z0-9]$", var.terraform_state_bucket_name))
+    error_message = "terraform_state_bucket_name debe tener de 3 a 63 caracteres, en minúsculas, dígitos, guiones o guiones bajos."
+  }
+}
+
 variable "artifacts_force_destroy" {
   description = "Si es true, terraform destroy borra los objetos del bucket de artifacts antes de borrar el bucket. Esos JSON no se recuperan."
   type        = bool

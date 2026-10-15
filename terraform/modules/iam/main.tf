@@ -55,8 +55,21 @@ resource "google_storage_bucket_iam_member" "object_storage_objects" {
   member = "serviceAccount:${google_service_account.object_storage.email}"
 }
 
-# El pool github-actions-pool y el provider github-provider ya existen fuera
-# de este módulo. Aquí solo se liga sports-demo-deploy a un subject de main.
-# No hay principalSet por repositorio ni llaves JSON. Los roles de proyecto
-# para Artifact Registry, Cloud Run y el bucket de estado van en otra tarea.
+resource "google_artifact_registry_repository_iam_member" "deploy_writer" {
+  project    = var.project_id
+  location   = var.artifact_registry_location
+  repository = var.artifact_registry_repository_id
+  role       = "roles/artifactregistry.writer"
+  member     = "serviceAccount:${google_service_account.deploy.email}"
+}
+
+resource "google_storage_bucket_iam_member" "deploy_tfstate" {
+  bucket = var.terraform_state_bucket_name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.deploy.email}"
+}
+
+# El pool y el provider WIF ya existen fuera de este módulo.
+# deploy publica imágenes y gestiona el estado; no ejecuta las apps.
+# Cloud Run, Cloud SQL y Secret Manager para CI/CD van en otra tarea.
 # sports y object_storage no reciben workloadIdentityUser.

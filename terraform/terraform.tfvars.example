@@ -31,6 +31,9 @@ object_storage_min_instances = 0
 # elegir otro. No es el bucket del estado de Terraform.
 artifacts_bucket_name = "sports-tournaments-multicloud-demo-artifacts"
 
+# Bucket del bootstrap. Este stack no lo crea; solo concede objectAdmin a deploy.
+terraform_state_bucket_name = "sports-tournaments-multicloud-tfstate"
+
 # true borra los JSON del bucket durante terraform destroy.
 artifacts_force_destroy = true
 

@@ -86,17 +86,20 @@ module "cloud_sql" {
 module "iam" {
   source = "./modules/iam"
 
-  project_id                = var.project_id
-  project_number            = var.project_number
-  sports_account_id         = local.sports_service_account_id
-  object_storage_account_id = local.object_storage_service_account_id
-  deploy_account_id         = local.deploy_service_account_id
-  workload_identity_pool_id = var.workload_identity_pool_id
-  github_actions_subject    = local.github_actions_deploy_subject
-  db_password_secret_id     = module.secret_manager.secret_id
-  artifacts_bucket_name     = module.cloud_storage.bucket_name
+  project_id                      = var.project_id
+  project_number                  = var.project_number
+  sports_account_id               = local.sports_service_account_id
+  object_storage_account_id       = local.object_storage_service_account_id
+  deploy_account_id               = local.deploy_service_account_id
+  workload_identity_pool_id       = var.workload_identity_pool_id
+  github_actions_subject          = local.github_actions_deploy_subject
+  db_password_secret_id           = module.secret_manager.secret_id
+  artifacts_bucket_name           = module.cloud_storage.bucket_name
+  artifact_registry_location      = var.region
+  artifact_registry_repository_id = module.artifact_registry.repository_id
+  terraform_state_bucket_name     = var.terraform_state_bucket_name
 
-  depends_on = [module.project_services]
+  depends_on = [module.project_services, module.artifact_registry]
 }
 
 module "object_storage_service" {
