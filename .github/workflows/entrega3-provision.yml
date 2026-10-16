@@ -321,10 +321,16 @@ jobs:
             --project="${PROJECT_ID}" --format='value(state)')"
           test "${state}" = "RUNNABLE"
 
-          gcloud sql databases describe "${DB_NAME}" \
+          # No usar grep -fxq: en GNU grep, -f exige un archivo de patrones
+          # y -fxq interpreta "xq" como nombre de archivo (error: grep: xq: ...).
+          db_name_found="$(gcloud sql databases describe "${DB_NAME}" \
             --instance="${SQL_INSTANCE}" \
             --project="${PROJECT_ID}" \
-            --format='value(name)' | grep -fxq "${DB_NAME}"
+            --format='value(name)')"
+          if [ "${db_name_found}" != "${DB_NAME}" ]; then
+            echo "Base ${DB_NAME} no encontrada (describe devolvió: ${db_name_found:-<vacío>})." >&2
+            exit 1
+          fi
 
           gcloud artifacts repositories describe "${AR_REPOSITORY}" \
             --project="${PROJECT_ID}" \
