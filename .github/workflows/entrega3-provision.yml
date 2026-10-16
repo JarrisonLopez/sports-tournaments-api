@@ -1,0 +1,382 @@
+name: Entrega 3 GCP Provision
+
+# Reconstruye la infraestructura base (sin Cloud Run) tras un destroy.
+# WIF solo autoriza assertion.sub de refs/heads/main.
+# No usar environment: aquí: cambiaría el subject OIDC y rompería el binding.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_provision:
+        description: 'Escribe PROVISION para confirmar el aprovisionamiento desde main'
+        required: true
+        type: string
+
+concurrency:
+  group: entrega3-gcp-terraform
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  provision:
+    name: Provision base infrastructure
+    runs-on: ubuntu-latest
+    # Sin environment: el subject OIDC debe coincidir con el binding de
+    # sports-demo-provision (mismo sub de main que deploy).
+
+    env:
+      PROJECT_ID: sports-tournaments-multicloud
+      REGION: us-central1
+      AR_REPOSITORY: sports-demo-images
+      SQL_INSTANCE: sports-demo-mysql
+      SECRET_ID: sports-demo-db-password
+      DB_NAME: sports_db
+      DB_USER: sports_user
+      ARTIFACTS_BUCKET: sports-tournaments-multicloud-demo-artifacts
+      TF_STATE_BUCKET: sports-tournaments-multicloud-tfstate
+      TF_STATE_PREFIX: entrega3/main
+      WIF_PROVIDER: projects/171179411205/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+      PROVISION_SA: sports-demo-provision@sports-tournaments-multicloud.iam.gserviceaccount.com
+
+    steps:
+      - name: Require main and explicit PROVISION confirmation
+        env:
+          CONFIRM_PROVISION: ${{ inputs.confirm_provision }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Este workflow solo puede ejecutarse desde refs/heads/main (recibido: ${GITHUB_REF})."
+            exit 1
+          fi
+          if [ "${CONFIRM_PROVISION}" != "PROVISION" ]; then
+            echo "Confirmación inválida. Escribe exactamente PROVISION."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.PROVISION_SA }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Refuse Provision when Cloud Run applications already exist
+        run: |
+          set -euo pipefail
+          # deploy_applications=false destruiría los servicios si estuvieran
+          # en el estado de Terraform. Abortar si ya hay apps en GCP.
+          found=0
+          for service in sports-demo-api sports-demo-storage; do
+            if gcloud run services describe "${service}" \
+              --project="${PROJECT_ID}" \
+              --region="${REGION}" \
+              --format='value(name)' >/dev/null 2>&1; then
+              echo "Encontrado Cloud Run existente: ${service}"
+              found=1
+            fi
+          done
+          if [ "${found}" -ne 0 ]; then
+            echo "Provision abortado: el stack ya tiene aplicaciones Cloud Run."
+            echo "Usa Deploy para actualizar imágenes, o Destroy y luego Provision."
+            exit 1
+          fi
+          echo "No hay servicios Cloud Run sports-demo-*; se permite Provision."
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: Terraform fmt
+        working-directory: terraform
+        run: terraform fmt -check -recursive
+
+      - name: Write Terraform backend and variable files
+        working-directory: terraform
+        run: |
+          set -euo pipefail
+          cat > backend.hcl <<EOF
+          bucket = "${TF_STATE_BUCKET}"
+          prefix = "${TF_STATE_PREFIX}"
+          EOF
+
+          # Sin contraseñas. Imágenes ilustrativas: Cloud Run no se crea.
+          cat > terraform.tfvars <<EOF
+          project_id      = "${PROJECT_ID}"
+          project_number  = "171179411205"
+          region          = "${REGION}"
+          environment     = "demo"
+          resource_prefix = "sports-demo"
+
+          workload_identity_pool_id = "github-actions-pool"
+          github_repository         = "JarrisonLopez/sports-tournaments-api"
+          github_owner_id           = "140736138"
+          github_repository_id      = "1349259895"
+          github_deploy_ref         = "refs/heads/main"
+
+          database_name           = "${DB_NAME}"
+          database_user           = "${DB_USER}"
+          database_version        = "MYSQL_8_4"
+          database_tier           = "db-f1-micro"
+          database_disk_size_gb   = 10
+          database_deletion_protection = false
+          database_activation_policy   = "ALWAYS"
+
+          sports_image         = "REGION-docker.pkg.dev/PROJECT/REPOSITORY/sports-tournaments-api:TAG"
+          object_storage_image = "REGION-docker.pkg.dev/PROJECT/REPOSITORY/object-storage:TAG"
+
+          sports_min_instances         = 0
+          object_storage_min_instances = 0
+
+          artifacts_bucket_name       = "${ARTIFACTS_BUCKET}"
+          terraform_state_bucket_name = "${TF_STATE_BUCKET}"
+          artifacts_force_destroy     = true
+
+          deploy_applications = false
+
+          sports_allow_unauthenticated         = false
+          object_storage_allow_unauthenticated = false
+
+          hotel_api_url               = ""
+          cine_api_url                = ""
+          otel_exporter_otlp_endpoint = ""
+          EOF
+
+      - name: Terraform init
+        working-directory: terraform
+        run: terraform init -input=false -backend-config=backend.hcl
+
+      - name: Terraform validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform plan
+        working-directory: terraform
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Validate Terraform provision plan
+        working-directory: terraform
+        run: |
+          set -euo pipefail
+          terraform show -json tfplan > tfplan.json
+          python3 <<'PY'
+          import json
+          import sys
+
+          CLOUD_RUN_PREFIXES = (
+              "module.sports_api[",
+              "module.object_storage_service[",
+          )
+
+          with open("tfplan.json", encoding="utf-8") as handle:
+              plan = json.load(handle)
+
+          rejected = []
+          creates = []
+
+          for change in plan.get("resource_changes") or []:
+              address = change.get("address") or "<unknown>"
+              actions = list(change.get("change", {}).get("actions") or [])
+
+              if actions == ["no-op"]:
+                  continue
+
+              if any(address.startswith(prefix) for prefix in CLOUD_RUN_PREFIXES):
+                  rejected.append(
+                      f"{address}: {','.join(actions)} "
+                      "(Provision no debe crear, actualizar ni destruir Cloud Run)"
+                  )
+                  continue
+
+              if actions == ["create"]:
+                  creates.append(address)
+                  continue
+
+              if actions == ["update"]:
+                  continue
+
+              # delete, replace (delete+create), etc.
+              rejected.append(
+                  f"{address}: {','.join(actions) or '<none>'} "
+                  "(Provision solo admite create/update/no-op fuera de Cloud Run)"
+              )
+
+          if rejected:
+              print("Rejected Terraform plan changes:", file=sys.stderr)
+              for item in rejected:
+                  print(f"  - {item}", file=sys.stderr)
+              print(
+                  "Provision aborted: unexpected destroys/replaces or Cloud Run changes.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          print("Plan validation passed for Provision.")
+          if creates:
+              print(f"Creates planned: {len(creates)}")
+          PY
+
+      - name: Terraform apply
+        working-directory: terraform
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Read Terraform outputs
+        id: tfouts
+        working-directory: terraform
+        run: |
+          set -euo pipefail
+          secret_id="$(terraform output -raw db_password_secret_id)"
+          connection_name="$(terraform output -raw cloud_sql_connection_name)"
+          ar_repo="$(terraform output -raw artifact_registry_repository)"
+          artifacts_bucket="$(terraform output -raw artifacts_bucket_name)"
+          deploy_sa="$(terraform output -raw deploy_service_account)"
+          sports_url="$(terraform output -raw sports_api_url 2>/dev/null || true)"
+          storage_url="$(terraform output -raw object_storage_url 2>/dev/null || true)"
+
+          echo "secret_id=${secret_id}" >> "${GITHUB_OUTPUT}"
+          echo "connection_name=${connection_name}" >> "${GITHUB_OUTPUT}"
+          echo "artifact_registry_repository=${ar_repo}" >> "${GITHUB_OUTPUT}"
+          echo "artifacts_bucket_name=${artifacts_bucket}" >> "${GITHUB_OUTPUT}"
+          echo "deploy_service_account=${deploy_sa}" >> "${GITHUB_OUTPUT}"
+
+          echo "Secret ID: ${secret_id}"
+          echo "Cloud SQL connection: ${connection_name}"
+          echo "Artifact Registry: ${ar_repo}"
+          echo "Artifacts bucket: ${artifacts_bucket}"
+          echo "Deploy SA: ${deploy_sa}"
+
+          if [ -n "${sports_url}" ] && [ "${sports_url}" != "null" ]; then
+            echo "sports_api_url no debería tener valor con deploy_applications=false." >&2
+            exit 1
+          fi
+          if [ -n "${storage_url}" ] && [ "${storage_url}" != "null" ]; then
+            echo "object_storage_url no debería tener valor con deploy_applications=false." >&2
+            exit 1
+          fi
+
+      - name: Set up Python for DB credential provisioning
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Load DB password into Secret Manager and recreate MySQL user
+        env:
+          SPORTS_DB_PASSWORD: ${{ secrets.SPORTS_DB_PASSWORD }}
+          SECRET_ID: ${{ steps.tfouts.outputs.secret_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SPORTS_DB_PASSWORD:-}" ]; then
+            echo "El secreto de repositorio SPORTS_DB_PASSWORD está vacío o no existe." >&2
+            exit 1
+          fi
+          # Enmascara el valor por si algún paso posterior lo imprimiera por error.
+          echo "::add-mask::${SPORTS_DB_PASSWORD}"
+
+          echo "Waiting for Cloud SQL instance ${SQL_INSTANCE} to be RUNNABLE."
+          state=""
+          for _ in $(seq 1 60); do
+            state="$(gcloud sql instances describe "${SQL_INSTANCE}" \
+              --project="${PROJECT_ID}" \
+              --format='value(state)')"
+            echo "Cloud SQL state=${state}"
+            if [ "${state}" = "RUNNABLE" ]; then
+              break
+            fi
+            sleep 10
+          done
+          if [ "${state}" != "RUNNABLE" ]; then
+            echo "Cloud SQL no alcanzó estado RUNNABLE." >&2
+            exit 1
+          fi
+
+          # Secret Manager + usuario MySQL vía APIs REST (password solo en JSON body).
+          # venv evita PEP 668 (externally-managed-environment) en ubuntu-latest.
+          python -m venv .venv-provision
+          .venv-provision/bin/pip install --upgrade pip
+          .venv-provision/bin/pip install --quiet 'google-auth>=2.0.0' 'requests>=2.31.0'
+          .venv-provision/bin/python scripts/entrega3_provision_db_credentials.py
+
+          # GRANT vía Cloud SQL Auth Proxy omitido a propósito:
+          # rotar root con gcloud expondría la password en argv, y en Cloud SQL
+          # for MySQL 8.x los usuarios de Admin API ya reciben el rol elevado
+          # de instancia (suficiente para TypeORM synchronize en esta demo).
+          echo "Secret Manager version and MySQL user ${DB_USER} configured (credentials not logged)."
+
+      - name: Verify base resources
+        run: |
+          set -euo pipefail
+
+          state="$(gcloud sql instances describe "${SQL_INSTANCE}" \
+            --project="${PROJECT_ID}" --format='value(state)')"
+          test "${state}" = "RUNNABLE"
+
+          gcloud sql databases describe "${DB_NAME}" \
+            --instance="${SQL_INSTANCE}" \
+            --project="${PROJECT_ID}" \
+            --format='value(name)' | grep -fxq "${DB_NAME}"
+
+          gcloud artifacts repositories describe "${AR_REPOSITORY}" \
+            --project="${PROJECT_ID}" \
+            --location="${REGION}" \
+            --format='value(name)' >/dev/null
+
+          gcloud storage buckets describe "gs://${ARTIFACTS_BUCKET}" \
+            --format='value(name)' >/dev/null
+
+          gcloud secrets describe "${SECRET_ID}" \
+            --project="${PROJECT_ID}" \
+            --format='value(name)' >/dev/null
+
+          enabled_versions="$(gcloud secrets versions list "${SECRET_ID}" \
+            --project="${PROJECT_ID}" \
+            --filter='state=enabled' \
+            --format='value(name)' | wc -l)"
+          if [ "${enabled_versions}" -lt 1 ]; then
+            echo "El secreto ${SECRET_ID} no tiene versiones enabled." >&2
+            exit 1
+          fi
+
+          gcloud iam service-accounts describe \
+            "sports-demo-deploy@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --project="${PROJECT_ID}" \
+            --format='value(email)' >/dev/null
+
+          for service in sports-demo-api sports-demo-storage; do
+            if gcloud run services describe "${service}" \
+              --project="${PROJECT_ID}" \
+              --region="${REGION}" \
+              --format='value(name)' >/dev/null 2>&1; then
+              echo "No se esperaba Cloud Run ${service} tras Provision." >&2
+              exit 1
+            fi
+          done
+
+          echo "Base resources verified. Ready for Entrega 3 GCP Deploy."
+
+      - name: Provision summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "## Entrega 3 GCP Provision" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Branch: \`${GITHUB_REF}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Commit: \`${GITHUB_SHA}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Terraform backend: \`${TF_STATE_BUCKET}/${TF_STATE_PREFIX}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- deploy_applications: \`false\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Secret ID: \`${{ steps.tfouts.outputs.secret_id }}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Cloud SQL: \`${{ steps.tfouts.outputs.connection_name }}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Artifact Registry: \`${{ steps.tfouts.outputs.artifact_registry_repository }}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Deploy SA: \`${{ steps.tfouts.outputs.deploy_service_account }}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Next: run **Entrega 3 GCP Deploy** with confirm \`DEPLOY\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Job result: \`${{ job.status }}\`" >> "${GITHUB_STEP_SUMMARY}"
