@@ -37,3 +37,8 @@ crash.*.log
 tfplan
 tfplan.*
 *.tfplan
+
+# Artefactos locales del workflow de Provision (Python).
+.venv-provision/
+__pycache__/
+*.pyc
