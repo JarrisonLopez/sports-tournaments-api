@@ -172,52 +172,11 @@ jobs:
         working-directory: terraform
         run: |
           set -euo pipefail
+          # Tras Provision (deploy_applications=false) el primer Deploy debe poder
+          # crear Cloud Run + IAM invoker. Redesplegues posteriores: solo update.
+          # Delete/replace y cambios fuera de la allowlist siguen prohibidos.
           terraform show -json tfplan > tfplan.json
-          python3 <<'PY'
-          import json
-          import sys
-
-          ALLOWED_UPDATES = {
-              "module.sports_api[0].google_cloud_run_v2_service.service",
-              "module.object_storage_service[0].google_cloud_run_v2_service.service",
-          }
-
-          with open("tfplan.json", encoding="utf-8") as handle:
-              plan = json.load(handle)
-
-          rejected = []
-          allowed_updates = []
-
-          for change in plan.get("resource_changes") or []:
-              address = change.get("address") or "<unknown>"
-              actions = list(change.get("change", {}).get("actions") or [])
-
-              if actions == ["no-op"]:
-                  continue
-
-              if actions == ["update"] and address in ALLOWED_UPDATES:
-                  allowed_updates.append(address)
-                  continue
-
-              rejected.append(f"{address}: {','.join(actions) or '<none>'}")
-
-          if allowed_updates:
-              print("Allowed Cloud Run service updates:")
-              for address in allowed_updates:
-                  print(f"  - {address}")
-
-          if rejected:
-              print("Rejected Terraform plan changes:", file=sys.stderr)
-              for item in rejected:
-                  print(f"  - {item}", file=sys.stderr)
-              print(
-                  "Only no-op or update of the two existing Cloud Run services is allowed.",
-                  file=sys.stderr,
-              )
-              sys.exit(1)
-
-          print("Plan validation passed: no unauthorized creates, deletes, or replaces.")
-          PY
+          python3 ../scripts/validate_entrega3_deploy_plan.py tfplan.json
 
       - name: Terraform apply
         working-directory: terraform

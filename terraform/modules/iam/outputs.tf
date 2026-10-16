@@ -12,3 +12,8 @@ output "deploy_service_account_email" {
   description = "Email de la cuenta de CI/CD. No es un secreto."
   value       = google_service_account.deploy.email
 }
+
+output "deploy_run_service_iam_role_id" {
+  description = "Rol personalizado para get/setIamPolicy de servicios Cloud Run (Deploy)."
+  value       = google_project_iam_custom_role.deploy_run_service_iam.id
+}

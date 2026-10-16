@@ -75,6 +75,28 @@ resource "google_project_iam_member" "deploy_run_developer" {
   member  = "serviceAccount:${google_service_account.deploy.email}"
 }
 
+# roles/run.developer puede getIamPolicy pero NO setIamPolicy (docs Cloud Run).
+# Sin setIamPolicy, el primer Deploy tras Provision no puede crear
+# google_cloud_run_v2_service_iam_member.service_invoker en Object Storage.
+# Rol a medida: solo política IAM de servicios Run (sin Owner/Editor/run.admin).
+resource "google_project_iam_custom_role" "deploy_run_service_iam" {
+  project     = var.project_id
+  role_id     = "sportsDemoDeployRunServiceIam"
+  title       = "Entrega 3 Deploy Cloud Run service IAM"
+  description = "Permite a sports-demo-deploy gestionar bindings run.invoker en Cloud Run tras Provision."
+  stage       = "GA"
+  permissions = [
+    "run.services.getIamPolicy",
+    "run.services.setIamPolicy",
+  ]
+}
+
+resource "google_project_iam_member" "deploy_run_service_iam" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.deploy_run_service_iam.id
+  member  = "serviceAccount:${google_service_account.deploy.email}"
+}
+
 resource "google_service_account_iam_member" "deploy_act_as_sports" {
   service_account_id = google_service_account.sports.name
   role               = "roles/iam.serviceAccountUser"
@@ -126,7 +148,4 @@ resource "google_project_iam_member" "deploy_security_reviewer" {
 
 # Lecturas para terraform plan/refresh. secretAccessor no se concede.
 # Artifact Registry: deploy_writer ya permite get del repo sports-demo-images.
-# Pendiente: run.services.getIamPolicy (y setIamPolicy en apply) del binding
-# run.invoker; run.developer no los incluye y aquí no se añade run.admin.
-# El primer apply de estos bindings debe hacerlo una identidad admin: deploy
-# aún no puede concederse a sí misma roles de proyecto.
+# run.invoker en Object Storage: deploy_run_service_iam (+ run.developer).
