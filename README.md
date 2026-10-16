@@ -1,35 +1,127 @@
 # Sports Tournaments API
 
-Este repositorio contiene la evolución del proyecto académico de torneos deportivos, desde la API base de la primera entrega hasta la V2 desplegada en la parte GCP de una arquitectura multicloud.
+Este repositorio contiene la evolución del proyecto académico de torneos deportivos, desde la API base de la primera entrega hasta la infraestructura individual de la Entrega 3 en Google Cloud.
 
 - **Entrega 1:** API REST de torneos deportivos, con entidades propias, MySQL, Docker y pipelines de CI.
 - **Entrega 2:** el mismo repositorio añade `/api/v2`, integración en tiempo real con las API de Hotel y Cine, Kubernetes en GKE, un servicio de Object Storage sobre Google Cloud Storage y observabilidad.
+- **Entrega 3:** superficie `/api/v3` individual (sin Hotel ni Cine), desplegada en Cloud Run con Terraform y un pipeline de GitHub Actions. V1 y V2 se conservan en el código.
 
-La Entrega 2 no sustituye las rutas originales. Las conserva y agrega la superficie `/api/v2`.
+La Entrega 2 no sustituye las rutas originales. Las conserva y agrega la superficie `/api/v2`. La Entrega 3 tampoco las sustituye: añade `/api/v3` y un runtime distinto en Cloud Run.
 
-# Entrega 3 — API V3 individual
+# Entrega 3 — API V3 individual (desplegada)
 
-La Entrega 3 es individual. V1 y V2 se conservan. V3 no llama a Hotel ni a Cine.
+La Entrega 3 es individual. V1 y V2 siguen en el código. V3 **no** llama a Hotel (OCI) ni a Cine (Azure): solo lee el torneo en MySQL y pide a Object Storage que guarde un artifact con `traceId` y ese torneo.
 
-`POST /api/v3/torneos/:id/artifact` lee el torneo en MySQL y guarda un artifact con `traceId` y ese torneo en Object Storage. La infraestructura prevista está en `terraform/` y todavía no se ha aplicado: no hay despliegue de esta versión en Cloud Run.
+La infraestructura vive en [`terraform/`](terraform/README.md). Está **aplicada**. Incluye dos servicios Cloud Run privados (`sports-demo-api` y `sports-demo-storage`), Cloud SQL MySQL, Artifact Registry, Secret Manager, un bucket de artifacts y Workload Identity Federation para CI. El detalle operativo está en [`terraform/README.md`](terraform/README.md); el bucket del estado remoto, en [`terraform/bootstrap/README.md`](terraform/bootstrap/README.md).
 
-El campo `version` de `package.json` sigue en `1.0.0`. “API V2” se refiere al prefijo HTTP `/api/v2`, no a un release SemVer 2.0.0.
+El campo `version` de `package.json` sigue en `1.0.0`. “API V2” y “API V3” se refieren a los prefijos HTTP `/api/v2` y `/api/v3`, no a releases SemVer 2.0.0 o 3.0.0.
+
+## Endpoint V3
+
+| Método | Ruta | Propósito |
+|---|---|---|
+| POST | `/api/v3/torneos/:id/artifact` | Leer el torneo local y guardar un artifact en Object Storage |
+
+Contrato verificado en el código (`src/controllers/v3-artifact.controller.ts`, `src/services/v3-artifact.service.ts`):
+
+- El `:id` debe ser un entero positivo. Si no, responde **400**.
+- El header `x-trace-id` es **obligatorio**. Debe coincidir con `^[A-Za-z0-9._-]{1,128}$`. Si falta o es inválido, responde **400**.
+- Si el torneo no existe, responde **404**.
+- Si Object Storage no está configurado o falla, responde **503** o **502** con `{ "message": "Error de almacenamiento" }`.
+- En caso de éxito responde **201** con el header `x-trace-id` repetido y un cuerpo de esta forma:
+
+```json
+{
+  "traceId": "...",
+  "torneo": {},
+  "artifact": {
+    "bucket": "...",
+    "object": "..."
+  }
+}
+```
+
+El JSON persistido lleva solo `traceId` y `torneo`. No incluye `habitacion` ni `pelicula`. El objeto en GCS sigue el patrón `flujos/{traceId}.json`, el mismo que usa Object Storage en la Entrega 2.
+
+V3 no genera el `x-trace-id`: el cliente debe enviarlo. Tampoco autentica por ese header; la protección de invocación en Cloud Run es IAM (`roles/run.invoker`), no el trace id.
+
+## Arquitectura GCP (Entrega 3)
+
+```mermaid
+flowchart TD
+  GHA["GitHub Actions: Entrega 3 GCP Deploy"]
+  WIF["Workload Identity Federation"]
+  DeploySA["SA sports-demo-deploy"]
+  AR["Artifact Registry: sports-demo-images"]
+  Sports["Cloud Run: sports-demo-api"]
+  Storage["Cloud Run: sports-demo-storage"]
+  SQL["Cloud SQL MySQL: sports-demo-mysql"]
+  SM["Secret Manager: sports-demo-db-password"]
+  GCS["GCS artifacts"]
+  State["GCS tfstate: entrega3/main"]
+
+  GHA --> WIF
+  WIF --> DeploySA
+  DeploySA --> AR
+  DeploySA --> Sports
+  DeploySA --> Storage
+  DeploySA --> State
+  AR --> Sports
+  AR --> Storage
+  Sports -->|"HTTP interno + IAM invoker"| Storage
+  Sports --> SQL
+  Sports --> SM
+  Storage --> GCS
+```
+
+Sports y Object Storage quedan con `allow_unauthenticated = false`. Sports puede invocar Object Storage porque su cuenta de ejecución tiene `roles/run.invoker` sobre ese servicio. Una petición anónima a las URLs HTTPS recibe 403.
+
+## Pipeline de despliegue
+
+Workflow: `.github/workflows/entrega3-gcp.yml` (`Entrega 3 GCP Deploy`).
+
+- Disparo: solo `workflow_dispatch`.
+- Rama: solo `refs/heads/main`.
+- Confirmación: el input debe ser exactamente `DEPLOY`.
+- No usa GitHub Environment: un `environment:` cambiaría el subject OIDC y rompería el binding WIF.
+- Autentica con Workload Identity Federation hacia `sports-demo-deploy@sports-tournaments-multicloud.iam.gserviceaccount.com`.
+- Construye y publica `sports-api-v3:${GITHUB_SHA}` y `object-storage-v3:${GITHUB_SHA}` en Artifact Registry.
+- Ejecuta `terraform fmt`, `init` con backend GCS, `validate`, `plan` y `apply`.
+- El plan solo puede contener `no-op` o `update` de los dos servicios Cloud Run ya existentes.
+- Comprueba `Ready=True` en `sports-demo-api` y `sports-demo-storage`.
+
+Cómo redesplegar: en GitHub → Actions → **Entrega 3 GCP Deploy** → Run workflow desde `main` → escribir `DEPLOY`.
+
+## Resultados verificables — Deploy #4
+
+| Dato | Valor |
+|---|---|
+| Workflow | Entrega 3 GCP Deploy #4 |
+| Commit | `1986b45a35f6d7db922a98075aa787737ac181be` |
+| Duración | 2 minutos y 29 segundos |
+| Terraform apply | 0 creados, 2 modificados, 0 eliminados |
+| Cloud Run | Ambos servicios `Ready=True` |
+| Imágenes | Publicadas en Artifact Registry con el SHA del commit |
+| Acceso | Servicios privados (sin invoker anónimo) |
+| Estado remoto | Bucket `sports-tournaments-multicloud-tfstate`, prefijo `entrega3/main` |
+
+Las URLs HTTPS salen del *Deployment summary* del job en Actions (`terraform output`). No se versionan aquí porque pueden cambiar al recrear el servicio y porque el acceso no es anónimo.
 
 ## Evolución del proyecto
 
-| Característica | Entrega 1 | Entrega 2 |
-|---|---|---|
-| Versión API | Rutas sin versión: `/torneos`, `/canchas`, `/jugadores` | Esas rutas se mantienen y se vuelven a publicar bajo `/api/v2`. Se agrega el flujo multicloud |
-| Arquitectura interna | Fastify, controladores, servicios y entidades TypeORM | La misma estructura, más clientes HTTP hacia Hotel, Cine y Object Storage |
-| Entidades | Torneo, Cancha y Jugador, persistidas en MySQL | Las tres entidades locales se mantienen. Habitación y Película no se guardan en la base de Sports |
-| Persistencia | MySQL 8.4 | MySQL para desarrollo local; en GKE, Cloud SQL mediante Cloud SQL Auth Proxy |
-| Despliegue | Docker, Docker Compose y CI en GitHub Actions. El README de esa entrega documentaba Railway para Testing y Production | Manifiestos en `k8s/` para GKE: Sports API, Object Storage y OpenTelemetry Collector. Los workflows actuales no despliegan a GKE |
-| Integración con APIs externas | No | Sports consulta Hotel y Cine por HTTP y envía el resultado a Object Storage |
-| Kubernetes | No | Deployment, Service, ConfigMap, probes, requests/limits, réplicas, HPA de Sports, Secret Manager CSI y Cloud SQL Proxy |
-| Object Storage | No | Servicio independiente en GKE. Sports no escribe en GCS directamente |
-| Observabilidad | Logger de Fastify hacia stdout | Logs de stdout en Cloud Logging. Métricas de infraestructura en Cloud Monitoring. Traces y métricas RED en Grafana Cloud |
-| Trazabilidad | No había `x-trace-id` ni OpenTelemetry en la API documentada | `x-trace-id` en `/api/v2`, spans de servidor y de cliente, propagación W3C y spans de GCS |
-| Configuración | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Esas variables se conservan. Se agregan URLs de integración, Cloud SQL y `DB_PASSWORD_FILE`. Object Storage usa `GCS_BUCKET_NAME` |
+| Característica | Entrega 1 | Entrega 2 | Entrega 3 |
+|---|---|---|---|
+| Versión API | Rutas sin versión: `/torneos`, `/canchas`, `/jugadores` | Esas rutas se mantienen y se vuelven a publicar bajo `/api/v2`. Se agrega el flujo multicloud | Se agrega `POST /api/v3/torneos/:id/artifact`. V1 y V2 se conservan |
+| Arquitectura interna | Fastify, controladores, servicios y entidades TypeORM | La misma estructura, más clientes HTTP hacia Hotel, Cine y Object Storage | Misma base. V3 solo usa MySQL y el cliente HTTP de Object Storage |
+| Entidades | Torneo, Cancha y Jugador, persistidas en MySQL | Las tres entidades locales se mantienen. Habitación y Película no se guardan en la base de Sports | Sin cambio de entidades. El artifact V3 solo lleva torneo |
+| Persistencia | MySQL 8.4 | MySQL para desarrollo local; en GKE, Cloud SQL mediante Cloud SQL Auth Proxy | Cloud Run conectado a Cloud SQL MySQL 8.4 (`sports-demo-mysql`) |
+| Despliegue | Docker, Docker Compose y CI en GitHub Actions. El README de esa entrega documentaba Railway para Testing y Production | Manifiestos en `k8s/` para GKE: Sports API, Object Storage y OpenTelemetry Collector. Los workflows `testing.yml` y `production.yml` no despliegan a GKE | Cloud Run + Terraform + `entrega3-gcp.yml`. Desplegado |
+| Integración con APIs externas | No | Sports consulta Hotel y Cine por HTTP y envía el resultado a Object Storage | V3 no llama a Hotel ni a Cine |
+| Kubernetes | No | Deployment, Service, ConfigMap, probes, requests/limits, réplicas, HPA de Sports, Secret Manager CSI y Cloud SQL Proxy | No usa GKE. Runtime en Cloud Run |
+| Object Storage | No | Servicio independiente en GKE. Sports no escribe en GCS directamente | Servicio independiente en Cloud Run (`sports-demo-storage`), privado |
+| Observabilidad | Logger de Fastify hacia stdout | Logs de stdout en Cloud Logging. Métricas de infraestructura en Cloud Monitoring. Traces y métricas RED en Grafana Cloud | Sin Collector ni Grafana en este stack. Hotel/Cine/OTLP quedan vacíos en las variables |
+| Trazabilidad | No había `x-trace-id` ni OpenTelemetry en la API documentada | `x-trace-id` en `/api/v2`, spans de servidor y de cliente, propagación W3C y spans de GCS | `x-trace-id` obligatorio en el POST V3 |
+| Configuración | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Esas variables se conservan. Se agregan URLs de integración, Cloud SQL y `DB_PASSWORD_FILE`. Object Storage usa `GCS_BUCKET_NAME` | Cloud Run inyecta `CLOUD_SQL_CONNECTION_NAME`, `DB_PASSWORD` desde Secret Manager, `OBJECT_STORAGE_API_URL` y `GCS_BUCKET_NAME` |
 
 Lo que todavía es responsabilidad de otros integrantes y no está integrado de extremo a extremo en este repositorio no aparece en la columna Entrega 2 como hecho. Está en [Integración grupal pendiente](#integración-grupal-pendiente).
 
