@@ -140,81 +140,91 @@ Provision y Deploy comparten el grupo de concurrencia `entrega3-gcp-terraform`. 
 - Rama: solo `refs/heads/main`.
 - Confirmación: input exactamente `DEPLOY`.
 - WIF → `sports-demo-deploy@sports-tournaments-multicloud.iam.gserviceaccount.com`.
-- Build y push de `sports-api-v3:${GITHUB_SHA}` y `object-storage-v3:${GITHUB_SHA}` a Artifact Registry.
+- Build y push de `sports-api-v3:${GITHUB_SHA}` y `object-storage-v3:${GITHUB_SHA}` a Artifact Registry **antes** del apply.
 - Terraform con `deploy_applications = true`.
-- Validador de plan: solo `no-op` o `update` de los dos servicios Cloud Run ya existentes (no crea ni destruye el resto del stack en el camino habitual de redespliegue).
+- Validador de plan (`scripts/validate_entrega3_deploy_plan.py`): admite `no-op`; `update` de los dos Cloud Run; y en el **primer Deploy tras Provision**, `create` de esos servicios más el binding `service_invoker` de Object Storage. Prohíbe `delete`/`replace` y cambios fuera de la allowlist.
 - Comprueba `Ready=True` en ambos servicios.
 - No usa GitHub `environment:`.
 
 Cómo redesplegar: Actions → **Entrega 3 GCP Deploy** → `main` → escribir `DEPLOY`.
 
-### Resultados verificables — Deploy #4
+### Ciclo Destroy → Provision → Deploy (ejecución real)
 
-| Dato | Valor |
+| Paso | Resultado comprobado |
 |---|---|
-| Workflow | Entrega 3 GCP Deploy #4 |
-| Commit | `1986b45a35f6d7db922a98075aa787737ac181be` |
-| Duración | 2 minutos y 29 segundos |
-| Terraform apply | 0 creados, 2 modificados, 0 eliminados |
-| Cloud Run | Ambos servicios `Ready=True` |
-| Imágenes | Publicadas en Artifact Registry con el SHA del commit |
-| Acceso | Servicios privados (sin invoker anónimo) |
-| Estado remoto | Bucket `sports-tournaments-multicloud-tfstate`, prefijo `entrega3/main` |
+| Destroy manual (`terraform/`, prefijo `entrega3/main`) | 0 create, 0 update, **34 destroy**; estado principal vacío |
+| Recursos que permanecieron | Bucket tfstate, stack `persistent/` (`sports-demo-provision` + WIF), pool/provider WIF |
+| Provision (intento inicial) | Falló temporalmente por capacidad de Cloud SQL en `us-central1-f` |
+| Recuperación | GCP creó `sports-demo-mysql`; se incorporó al estado con `terraform import`; se reejecutó Provision |
+| **Entrega 3 GCP Provision #3** | **Success** |
+| **Entrega 3 GCP Deploy** (commit `7b79baf`) | **Success** |
 
-Las URLs HTTPS salen del *Deployment summary* del job en Actions (`terraform output`). No se versionan aquí porque pueden cambiar al recrear el servicio y porque el acceso no es anónimo.
+La reconstrucción fue **funcionalmente exitosa**, pero **no fue completamente automática**: hizo falta una intervención manual (`import`) por la incidencia de capacidad de Cloud SQL.
 
-Commits posteriores relevantes en `main`: `56604ae` (workflow Provision) y `2ea5a65` (versionado de `terraform/persistent/`).
+Release GitHub existente: `v3.0.0` → `3f05cb4`. HEAD de `main`: `7b79baf` (cinco commits posteriores a `v3.0.0`).
 
 ## Recuperabilidad
 
-Procedimiento **conceptual** tras eliminar el stack reconstruible:
+Procedimiento tras eliminar el stack reconstruible:
 
-1. **Destroy** del stack principal (`terraform/`, prefijo `entrega3/main`) — hoy **manual**; no hay workflow Destroy.
-2. **Provision** — reconstruye la base y restaura secreto/usuario MySQL (`SPORTS_DB_PASSWORD`).
-3. **Deploy** — publica imágenes y crea/actualiza Cloud Run.
+1. **Destroy manual** del stack principal (`cd terraform`, backend `entrega3/main`) — no hay workflow Destroy. Detalle en [`terraform/README.md`](terraform/README.md).
+2. **Provision** (Actions, confirmación `PROVISION`) — base + `SPORTS_DB_PASSWORD` → Secret Manager + `sports_user`.
+3. **Deploy** (Actions, confirmación `DEPLOY`) — imágenes + Cloud Run.
+4. **Datos de aplicación:** tras Destroy la BD y los JSON de artifacts se pierden; hay que volver a crear torneos de prueba si se necesitan.
 
-Distinción importante:
-
-| Elemento | Estado |
+| Elemento | Estado (post-reconstrucción) |
 |---|---|
-| Infraestructura de aplicación | **Operativa** (Cloud Run Ready, SQL RUNNABLE, E2E manual reportado) |
-| Workflow Provision | **Implementado** en el repositorio |
-| Stack persistente + bucket de estado | Deben **permanecer** tras un destroy del principal |
-| Ciclo Destroy → Provision → Deploy | Diseñado, pero **aún no ejecutado E2E** tras un Destroy real |
+| Infraestructura de aplicación | **Operativa** (comprobado) |
+| Workflows Provision y Deploy | **Implementados** y ejecutados con Success |
+| Bootstrap + persistent | **Conservados** durante el Destroy del principal |
+| Reconstrucción 100 % automática | **No**: se requirió `terraform import` por incidencia Cloud SQL |
 
-No conviene destruir el entorno funcional solo para validar esta documentación. Cuando se autorice una demo de reconstrucción, usar confirmaciones explícitas y ventana controlada.
+## Evidencias funcionales (ejecución real reportada)
 
-## Evidencias funcionales (pruebas manuales reportadas)
+Incluye pruebas del entorno **tras** la reconstrucción. No sustituyen los tests de Vitest en CI.
 
-Estas comprobaciones se realizaron **manualmente** contra el entorno desplegado. **No** son una ejecución automática del pipeline ni sustituyen los tests de Vitest en CI.
-
-| Prueba | Resultado reportado |
+| Prueba | Resultado |
 |---|---|
-| Sports API `GET /` | HTTP 200 |
-| Sports API `GET /health/ready` | HTTP 200; comprueba la BD con `SELECT 1` (TypeORM) |
-| Sports API `GET /torneos/1` | HTTP 200 (torneo demo) |
-| Object Storage `GET /health/ready` | HTTP 200; valida que `GCS_BUCKET_NAME` esté configurado, **no** una lectura real a GCS |
-| Object Storage `GET /api/v2/artifacts/{traceId}` (artefacto existente) | HTTP 200 |
-| Sports API `POST /api/v3/torneos/1/artifact` | HTTP 201 |
-| Existencia del objeto en GCS | Confirmada (`gcloud storage ls`) |
-| Lectura del artefacto recién creado vía Object Storage | HTTP 200 y JSON esperado |
+| Destroy stack principal | 34 recursos eliminados |
+| Provision #3 / Deploy (`7b79baf`) | Success / Success |
+| Cloud SQL `sports-demo-mysql` | RUNNABLE |
+| Cloud Run API y Storage | Ready=True |
+| `GET /health/ready` (ambos) | Correcto |
+| `POST /torneos` → torneo ID 1 | Escritura MySQL OK |
+| `GET /torneos/1` | Lectura MySQL OK |
+| `POST /api/v3/torneos/1/artifact` | Exitoso |
+| Objeto en GCS | Confirmado |
+| `GET /api/v2/artifacts/:traceId` | JSON esperado |
 
-Artefacto de la prueba E2E:
+Trace ID de la prueba post-rebuild:
 
 ```text
-flujos/e3-test-afd041ce-8b8f-4501-bd9e-8dee12a802e5.json
+e3-rebuild-58061a0a-f1e9-4571-9323-077e497ac860
 ```
+
+Objeto típico: `flujos/<traceId>.json`.
+
+### Comprobaciones útiles (lectura)
+
+```bash
+gcloud sql instances describe sports-demo-mysql --project=sports-tournaments-multicloud --format='value(state)'
+gcloud run services describe sports-demo-api --region=us-central1 --project=sports-tournaments-multicloud --format='value(status.conditions)'
+gcloud run services describe sports-demo-storage --region=us-central1 --project=sports-tournaments-multicloud --format='value(status.conditions)'
+gcloud storage ls gs://sports-tournaments-multicloud-demo-artifacts/flujos/
+```
+
+Las URLs HTTPS salen de `terraform output` o del summary del Deploy; no se versionan aquí (servicios privados).
 
 ## Seguridad y limitaciones (Entrega 3)
 
-- Cloud Run **privado** (`allow_unauthenticated = false`); invocación con identidad IAM.
-- Sports → Object Storage: **ID token** (Google Auth) + `roles/run.invoker`.
-- Contraseña MySQL **fuera del estado Terraform** por diseño (sin `google_sql_user` ni `secret_version` en HCL). Contenedor en Secret Manager; valor vía GitHub Secret `SPORTS_DB_PASSWORD` en Provision y referencia `latest` en Cloud Run.
-- WIF sin llaves JSON de cuenta de servicio.
-- `sports-demo-provision` tiene `roles/owner` **temporal** en el proyecto académico; debe retirarse al cerrar la demo. `sports-demo-deploy` mantiene permisos acotados.
-- No hay workflow Destroy; un destroy mal ejecutado borra Cloud SQL, artifacts (`force_destroy`), secreto contenedor, SAs de runtime/deploy y Cloud Run. **No** borra el bucket de tfstate (bootstrap) ni, si sigue aplicado, el stack persistente.
-- La recuperación completa Destroy → Provision → Deploy **no** se ha validado E2E todavía.
-- Object Storage no autentica `x-trace-id`; la protección en Cloud Run es IAM, no el header de correlación.
+- Cloud Run **privado**; Sports → Object Storage con **ID token** + `roles/run.invoker`.
+- Contraseña MySQL **fuera del estado Terraform**; GitHub Secret `SPORTS_DB_PASSWORD` en Provision; Cloud Run usa Secret Manager `latest`.
+- WIF sin llaves JSON.
+- `sports-demo-provision`: `roles/owner` **temporal** (retirar al cerrar la demo). Deploy: permisos acotados + rol personalizado para `setIamPolicy` de Cloud Run.
+- Destroy borra SQL, artifacts, secreto GCP, AR, SAs runtime/deploy y Cloud Run. **No** borra tfstate ni persistent.
+- **Pérdida de datos:** no hay backups automáticos de MySQL ni de JSON en GCS.
+- Incidencia conocida: falta de capacidad zonal de Cloud SQL puede exigir `terraform import` manual.
+- Object Storage no autentica `x-trace-id` (solo correlación).
 
 ## Evolución del proyecto
 

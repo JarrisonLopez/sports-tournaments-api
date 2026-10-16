@@ -8,12 +8,15 @@ Este root **no** administra Secret Manager ni la contraseña MySQL.
 
 ## Objetivo
 
-Conservar la identidad con la que GitHub Actions puede volver a **Provision** (y, cuando exista, **Destroy**) el stack reconstruible, sin depender de la SA `sports-demo-deploy` del stack principal (esa SA se destruye con `entrega3/main`).
+Conservar la identidad con la que GitHub Actions puede volver a **Provision** el stack reconstruible, sin depender de la SA `sports-demo-deploy` del stack principal (esa SA se destruye con `entrega3/main`).
 
-| Workflow | Identidad |
+No hay workflow Destroy en la Entrega 3: el `terraform destroy` del stack principal se ejecuta **manualmente** desde `terraform/` (backend `entrega3/main`). Este root y `bootstrap/` se conservan; la reconstrucción usa Provision y luego Deploy.
+
+| Workflow / procedimiento | Identidad |
 |---|---|
-| Provision (y Destroy futuro) | `sports-demo-provision` (este root) |
-| Deploy (imágenes + Cloud Run) | `sports-demo-deploy` (stack principal; permisos acotados) |
+| Entrega 3 GCP Provision | `sports-demo-provision` (este root) |
+| Entrega 3 GCP Deploy | `sports-demo-deploy` (stack principal; permisos acotados) |
+| Terraform Destroy del principal | Manual desde `terraform/` (no hay workflow; no usa esta SA por CI) |
 
 La contraseña MySQL para reconstrucción se obtiene desde el secreto de repositorio de GitHub Actions `SPORTS_DB_PASSWORD` (fuera de Terraform). El contenedor Secret Manager `sports-demo-db-password` permanece en el **stack principal** y puede destruirse/reconstruirse con él.
 
@@ -71,7 +74,7 @@ Principal WIF:
 principal://iam.googleapis.com/projects/171179411205/locations/global/workloadIdentityPools/github-actions-pool/subject/repo:JarrisonLopez@140736138/sports-tournaments-api@1349259895:ref:refs/heads/main
 ```
 
-No usar GitHub `environment:` en Provision/Destroy si eso cambia el claim `sub` y rompe este binding.
+No usar GitHub `environment:` en Provision (ni en Deploy) si eso cambia el claim `sub` y rompe este binding.
 
 ## Verificar el estado sin modificar recursos
 
@@ -95,17 +98,17 @@ Comprobaciones puntuales en GCP (solo lectura), por ejemplo:
 
 ## Recuperación (procedimiento general)
 
-Tras un destroy del stack principal (`entrega3/main`), la identidad de este root debe seguir disponible:
+Tras un **Destroy manual** del stack principal (`cd terraform`, backend `entrega3/main`), este root y `bootstrap/` deben seguir disponibles:
 
-1. Confirmar que este root sigue aplicado (plan no-op / SA presente).
+1. Confirmar que este root sigue aplicado (plan no-op / SA presente) y que el bucket de estado sigue intacto.
 2. Ejecutar **Entrega 3 GCP Provision** desde `main` (confirmación `PROVISION`).
 3. Ejecutar **Entrega 3 GCP Deploy** (confirmación `DEPLOY`) para imágenes y Cloud Run.
 
-**Nota:** el ciclo completo Destroy → Provision → Deploy **aún no se ha ejecutado** de extremo a extremo en esta entrega; el diseño lo habilita, pero la prueba E2E sigue pendiente.
+No existe (ni se prevé) un workflow de Destroy: solo el procedimiento Terraform manual del root principal, seguido de Provision y Deploy en Actions.
 
 ## Riesgo: `roles/owner` temporal
 
-Se concedió `roles/owner` a `sports-demo-provision` para simplificar Provision/Destroy en un proyecto académico dedicado.
+Se concedió `roles/owner` a `sports-demo-provision` para simplificar el workflow **Provision** en un proyecto académico dedicado.
 
 - No ampliar Owner a `sports-demo-deploy`.
 - Al finalizar la demostración: **retirar** el binding Owner o destruir este root con autorización explícita.
