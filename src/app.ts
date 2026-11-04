@@ -3,6 +3,10 @@ import Fastify, { FastifyInstance, FastifyServerOptions } from "fastify";
 import { MetricReader } from "@opentelemetry/sdk-metrics";
 
 import {
+  resolveFaultInjectionConfig,
+  type FaultInjectionConfig,
+} from "./config/fault-injection";
+import {
   API_TRACK_HEADER,
   API_VERSION_HEADER,
   resolveRuntimeIdentity,
@@ -26,6 +30,13 @@ export type BuildAppOptions = {
   logger?: FastifyServerOptions["logger"];
   /** Override explícito para tests; en runtime se usan API_VERSION / API_TRACK. */
   identity?: RuntimeIdentity;
+  /**
+   * Config de fault injection para tests.
+   * En runtime se resuelve desde process.env (o `env` si se pasa).
+   */
+  faultInjection?: FaultInjectionConfig;
+  /** Env aislado para resolver fault injection / identidad cuando no hay overrides. */
+  env?: NodeJS.ProcessEnv;
 };
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -33,7 +44,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     logger: options.logger ?? true,
   });
 
-  const identity = options.identity ?? resolveRuntimeIdentity();
+  const env = options.env ?? process.env;
+  const identity = options.identity ?? resolveRuntimeIdentity(env);
+  const faultInjection =
+    options.faultInjection ?? resolveFaultInjectionConfig(env);
 
   registerRuntimeIdentityHeaders(app, identity);
   registerServerSpanRoute(app);
@@ -42,7 +56,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     createHttpMetrics(
       "sports-api",
       options.metricsReader,
-      process.env,
+      env,
       identity,
     ),
   );
@@ -60,6 +74,8 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.register(v2Routes, {
     prefix: "/api/v2",
+    identity,
+    faultInjection,
   });
   app.register(v3Routes, {
     prefix: "/api/v3",
