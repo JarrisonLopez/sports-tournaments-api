@@ -14,6 +14,7 @@ import { jugadorRoutes } from "./routes/jugador.routes";
 import { healthRoutes } from "./routes/health.routes";
 import { v2Routes } from "./routes/v2";
 import { v3Routes } from "./routes/v3";
+import { v4Routes } from "./routes/v4";
 import {
   createHttpMetrics,
   registerRedMetrics,
@@ -57,6 +58,9 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
   app.register(v3Routes, {
     prefix: "/api/v3",
+  });
+  app.register(v4Routes, {
+    prefix: "/api/v4",
   });
 
   return app;
