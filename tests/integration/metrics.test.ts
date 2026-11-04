@@ -19,6 +19,7 @@ import {
   API_VERSION_ATTR,
   TORNEO_LOOKUP_SUCCESS_METRIC,
   TORNEO_LOOKUP_SUCCESS_ROUTE,
+  TORNEO_RESUMEN_REQUESTS_METRIC,
 } from "../../src/observability/metrics";
 import {
   API_TRACK_HEADER,
@@ -54,6 +55,13 @@ const RED_ATTRIBUTE_KEYS = [
 
 const LOOKUP_ATTRIBUTE_KEYS = ["api.track", "api.version", "http.route"].sort();
 
+const RESUMEN_ATTRIBUTE_KEYS = [
+  "api.track",
+  "api.version",
+  "http.route",
+  "outcome",
+].sort();
+
 async function collectPoints(
   reader: CollectingMetricReader,
 ): Promise<MetricPoint[]> {
@@ -69,6 +77,10 @@ async function collectPoints(
           expect(Object.keys(dataPoint.attributes).sort()).toEqual(
             LOOKUP_ATTRIBUTE_KEYS,
           );
+        } else if (metric.descriptor.name === TORNEO_RESUMEN_REQUESTS_METRIC) {
+          expect(Object.keys(dataPoint.attributes).sort()).toEqual(
+            RESUMEN_ATTRIBUTE_KEYS,
+          );
         } else {
           expect(Object.keys(dataPoint.attributes).sort()).toEqual(
             RED_ATTRIBUTE_KEYS,
@@ -77,6 +89,7 @@ async function collectPoints(
 
         const serialized = JSON.stringify(dataPoint.attributes);
         expect(serialized).not.toMatch(/\/api\/v2\/torneos\/\d+/);
+        expect(serialized).not.toMatch(/\/api\/v4\/torneos\/\d+/);
 
         points.push({
           name: metric.descriptor.name,
@@ -226,7 +239,7 @@ describe("Métricas RED de Sports API", () => {
     await app.close();
   });
 
-  it("no registra healthchecks ni rutas fuera de /api/v2 y /api/v3", async () => {
+  it("no registra healthchecks ni rutas fuera de /api/v2, /api/v3 y /api/v4", async () => {
     const reader = new CollectingMetricReader();
     const app = buildApp({ metricsReader: reader });
 

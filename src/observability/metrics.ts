@@ -21,12 +21,19 @@ export const HTTP_REQUESTS_METRIC = "http.server.requests";
 export const HTTP_ERRORS_METRIC = "http.server.errors";
 export const HTTP_DURATION_METRIC = "http.server.request.duration";
 export const TORNEO_LOOKUP_SUCCESS_METRIC = "sports.torneo.lookup.success";
+export const TORNEO_RESUMEN_REQUESTS_METRIC = "sports.torneo.resumen.requests";
 
 export const API_VERSION_ATTR = "api.version";
 export const API_TRACK_ATTR = "api.track";
+export const OUTCOME_ATTR = "outcome";
 
 /** Plantilla Fastify (con prefijo) de la consulta compartida v2. */
 export const TORNEO_LOOKUP_SUCCESS_ROUTE = "/api/v2/torneos/:id";
+
+/** Plantilla Fastify (con prefijo) del resumen exclusivo v4. */
+export const TORNEO_RESUMEN_ROUTE = "/api/v4/torneos/:id/resumen";
+
+export type ResumenOutcome = "success" | "client_error" | "server_error";
 
 /**
  * Unit of http.server.request.duration.
@@ -54,6 +61,7 @@ export type HttpMetrics = {
   errors: Counter;
   duration: Histogram;
   torneoLookupSuccess: Counter;
+  torneoResumenRequests: Counter;
   shutdown: () => Promise<void>;
 };
 
@@ -81,7 +89,7 @@ export function createHttpMetrics(
   const meter = provider.getMeter(serviceName);
 
   const requests = meter.createCounter(HTTP_REQUESTS_METRIC, {
-    description: "HTTP requests received on /api/v2",
+    description: "HTTP requests received on /api/v2, /api/v3 and /api/v4",
   });
 
   const errors = meter.createCounter(HTTP_ERRORS_METRIC, {
@@ -104,6 +112,14 @@ export function createHttpMetrics(
     },
   );
 
+  const torneoResumenRequests = meter.createCounter(
+    TORNEO_RESUMEN_REQUESTS_METRIC,
+    {
+      description:
+        "GET /api/v4/torneos/:id/resumen responses classified by outcome (canary v4)",
+    },
+  );
+
   return {
     serviceName,
     identity,
@@ -111,6 +127,7 @@ export function createHttpMetrics(
     errors,
     duration,
     torneoLookupSuccess,
+    torneoResumenRequests,
     shutdown: () => provider.shutdown(),
   };
 }
@@ -200,6 +217,15 @@ export function registerRedMetrics(
         "http.route": route,
       });
     }
+
+    if (isTorneoResumenRequest(request.method, route)) {
+      httpMetrics.torneoResumenRequests.add(1, {
+        [API_VERSION_ATTR]: httpMetrics.identity.version,
+        [API_TRACK_ATTR]: httpMetrics.identity.track,
+        "http.route": route,
+        [OUTCOME_ATTR]: classifyResumenOutcome(reply.statusCode),
+      });
+    }
   });
 
   app.addHook("onClose", async () => {
@@ -217,6 +243,22 @@ function isTorneoLookupSuccess(
     route === TORNEO_LOOKUP_SUCCESS_ROUTE &&
     statusCode === 200
   );
+}
+
+function isTorneoResumenRequest(method: string, route: string): boolean {
+  return method === "GET" && route === TORNEO_RESUMEN_ROUTE;
+}
+
+export function classifyResumenOutcome(statusCode: number): ResumenOutcome {
+  if (statusCode >= 200 && statusCode < 300) {
+    return "success";
+  }
+
+  if (statusCode >= 400 && statusCode < 500) {
+    return "client_error";
+  }
+
+  return "server_error";
 }
 
 function pathnameOf(url: string): string {
@@ -238,7 +280,9 @@ function isMeasuredApiPath(pathname: string): boolean {
     pathname === "/api/v2" ||
     pathname.startsWith("/api/v2/") ||
     pathname === "/api/v3" ||
-    pathname.startsWith("/api/v3/")
+    pathname.startsWith("/api/v3/") ||
+    pathname === "/api/v4" ||
+    pathname.startsWith("/api/v4/")
   );
 }
 
