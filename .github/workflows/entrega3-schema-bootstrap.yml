@@ -1,0 +1,269 @@
+name: Entrega 3 - Cloud SQL Schema PLAN
+
+# Solo consulta el esquema. No contiene comandos de creación o adopción.
+# Diseñado para revisarse en feature y ejecutarse, tras aprobación, solo desde main.
+# 127.0.0.1 no identifica la instancia: el connection name autorizado, el output
+# del estado y Cloud SQL Admin API tienen que coincidir antes de arrancar el proxy.
+# sports-demo-provision tiene roles/owner. Revisar el mínimo privilegio antes de
+# dejar este camino como permanente. Un rol de IAM no es un GRANT de MySQL.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_plan:
+        description: 'Escribe PLAN para inspeccionar el esquema (sin escrituras)'
+        required: true
+        type: string
+
+concurrency:
+  group: entrega3-gcp-terraform
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  schema-plan:
+    name: Read-only schema inspection
+    if: github.ref == 'refs/heads/main' && github.repository == 'JarrisonLopez/sports-tournaments-api' && github.event.repository.fork == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    # No agregar environment: alteraría el subject OIDC autorizado actualmente.
+    env:
+      PROJECT_ID: sports-tournaments-multicloud
+      REGION: us-central1
+      SQL_INSTANCE: sports-demo-mysql
+      DB_NAME: sports_db
+      DB_USER: sports_user
+      SECRET_ID: sports-demo-db-password
+      TF_STATE_BUCKET: sports-tournaments-multicloud-tfstate
+      TF_STATE_PREFIX: entrega3/main
+      WIF_PROVIDER: projects/171179411205/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+      PROVISION_SA: sports-demo-provision@sports-tournaments-multicloud.iam.gserviceaccount.com
+      DB_HOST: '127.0.0.1'
+      DB_PORT: '13306'
+      DB_BOOTSTRAP_ALLOW_HOST: '127.0.0.1'
+
+    steps:
+      - name: Exigir ejecución manual autorizada
+        env:
+          CONFIRM_PLAN: ${{ inputs.confirm_plan }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = 'refs/heads/main'
+          test "${GITHUB_REPOSITORY}" = 'JarrisonLopez/sports-tournaments-api'
+          if [ "${CONFIRM_PLAN}" != 'PLAN' ]; then
+            echo 'Confirmación inválida: se requiere PLAN.' >&2
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Autenticación GCP mediante WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.PROVISION_SA }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Configurar Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configurar Terraform para leer estado existente
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9.8'
+          terraform_wrapper: false
+
+      - name: Leer outputs del estado Terraform sin aplicar cambios
+        id: state
+        working-directory: terraform
+        run: |
+          set -euo pipefail
+          terraform init -input=false -reconfigure -no-color \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="prefix=${TF_STATE_PREFIX}"
+          connection_name="$(terraform output -raw cloud_sql_connection_name)"
+          secret_id="$(terraform output -raw db_password_secret_id)"
+          expected="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
+          if [ -z "${connection_name}" ] || [ "${connection_name}" != "${expected}" ]; then
+            echo 'La instancia del estado Terraform no coincide con la configuración autorizada.' >&2
+            exit 1
+          fi
+          if [ "${secret_id}" != "${SECRET_ID}" ]; then
+            echo 'El identificador del secreto no coincide con el estado Terraform.' >&2
+            exit 1
+          fi
+          echo "connection_name=${connection_name}" >> "${GITHUB_OUTPUT}"
+          echo 'Estado Terraform: identificadores coherentes.'
+
+      - name: Comprobar instancia y base mediante Cloud SQL Admin API
+        env:
+          TF_CONNECTION_NAME: ${{ steps.state.outputs.connection_name }}
+        run: |
+          set -euo pipefail
+          expected="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
+          test -n "${TF_CONNECTION_NAME}"
+          test "${TF_CONNECTION_NAME}" = "${expected}"
+          instance_json="$(gcloud sql instances describe "${SQL_INSTANCE}" \
+            --project="${PROJECT_ID}" --format=json)"
+          test "$(jq -er '.connectionName' <<< "${instance_json}")" = "${expected}"
+          test "$(jq -er '.project' <<< "${instance_json}")" = "${PROJECT_ID}"
+          test "$(jq -er '.name' <<< "${instance_json}")" = "${SQL_INSTANCE}"
+          test "$(jq -er '.region' <<< "${instance_json}")" = "${REGION}"
+          test "$(jq -er '.state' <<< "${instance_json}")" = 'RUNNABLE'
+          test "$(jq -er '.databaseVersion' <<< "${instance_json}")" = 'MYSQL_8_4'
+          db_json="$(gcloud sql databases describe "${DB_NAME}" \
+            --instance="${SQL_INSTANCE}" --project="${PROJECT_ID}" --format=json)"
+          test "$(jq -er '.name' <<< "${db_json}")" = "${DB_NAME}"
+          test "$(jq -er '.charset' <<< "${db_json}")" = 'utf8mb4'
+          test "$(jq -er '.collation' <<< "${db_json}")" = 'utf8mb4_unicode_ci'
+          echo "DB_BOOTSTRAP_EXPECT_INSTANCE=${expected}" >> "${GITHUB_ENV}"
+          echo 'Instancia, región, versión y base verificadas por metadatos.'
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Compilar CLI del bootstrap
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+
+      - name: Descargar y comprobar Cloud SQL Auth Proxy v2.26.3
+        run: |
+          set -euo pipefail
+          proxy_bin="${RUNNER_TEMP}/cloud-sql-proxy"
+          curl --fail --silent --show-error --location --retry 3 \
+            'https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.26.3/cloud-sql-proxy.linux.amd64' \
+            --output "${proxy_bin}"
+          printf '%s  %s\n' \
+            '5533a05cdbf12f8a0cb46db34c775847a496e181d47f863284d3d02b0fad49fa' \
+            "${proxy_bin}" | sha256sum --check --status
+          chmod 700 "${proxy_bin}"
+          test -x "${proxy_bin}"
+          "${proxy_bin}" --version
+
+      - name: Conectar proxy temporal y ejecutar exclusivamente PLAN
+        env:
+          TF_CONNECTION_NAME: ${{ steps.state.outputs.connection_name }}
+        run: |
+          set -euo pipefail
+          expected="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
+          if [ -z "${DB_BOOTSTRAP_EXPECT_INSTANCE:-}" ] || \
+             [ "${DB_BOOTSTRAP_EXPECT_INSTANCE}" != "${expected}" ] || \
+             [ "${TF_CONNECTION_NAME}" != "${expected}" ]; then
+            echo 'Identidad Cloud SQL incompleta o inconsistente.' >&2
+            exit 1
+          fi
+
+          proxy_bin="${RUNNER_TEMP}/cloud-sql-proxy"
+          proxy_log="${RUNNER_TEMP}/schema-plan-proxy.log"
+          proxy_pid=''
+          cleanup() {
+            if [ -n "${proxy_pid}" ]; then
+              kill "${proxy_pid}" 2>/dev/null || true
+              wait "${proxy_pid}" 2>/dev/null || true
+            fi
+            unset DB_PASSWORD || true
+            rm -f "${proxy_log}"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          # El único argumento de instancia al proxy es el valor ya contrastado.
+          "${proxy_bin}" --address '127.0.0.1' --port "${DB_PORT}" \
+            "${DB_BOOTSTRAP_EXPECT_INSTANCE}" > "${proxy_log}" 2>&1 &
+          proxy_pid=$!
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if ! kill -0 "${proxy_pid}" 2>/dev/null; then
+              echo 'El Auth Proxy terminó antes de estar disponible.' >&2
+              exit 1
+            fi
+            mapfile -t listeners < <(ss -H -ltnp "sport = :${DB_PORT}" || true)
+            if [ "${#listeners[@]}" -eq 1 ]; then
+              local_addr="$(awk '{print $4}' <<< "${listeners[0]}")"
+              listener_pid="$(sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' <<< "${listeners[0]}")"
+              if [ "${local_addr}" = "127.0.0.1:${DB_PORT}" ] && [ "${listener_pid}" = "${proxy_pid}" ]; then
+                ready=1
+                break
+              fi
+            fi
+            sleep 1
+          done
+          if [ "${ready}" -ne 1 ]; then
+            echo 'El proceso del Auth Proxy no es el único que escucha en 127.0.0.1.' >&2
+            exit 1
+          fi
+
+          cmdline="$(tr '\0' '\n' < "/proc/${proxy_pid}/cmdline")"
+          printf '%s\n' "${cmdline}" | grep -Fxq -- "${DB_BOOTSTRAP_EXPECT_INSTANCE}"
+          printf '%s\n' "${cmdline}" | grep -Fxq -- '--address'
+          printf '%s\n' "${cmdline}" | grep -Fxq -- '127.0.0.1'
+          printf '%s\n' "${cmdline}" | grep -Fxq -- '--port'
+          printf '%s\n' "${cmdline}" | grep -Fxq -- "${DB_PORT}"
+          if printf '%s\n' "${cmdline}" | grep -q 'auto-iam-authn'; then
+            echo 'El Auth Proxy no debe usar autenticación IAM de base de datos.' >&2
+            exit 1
+          fi
+          if ! kill -0 "${proxy_pid}" 2>/dev/null; then
+            echo 'El Auth Proxy no sigue activo antes de la inspección.' >&2
+            exit 1
+          fi
+
+          # La contraseña solo vive en este proceso y en el subproceso Node.
+          DB_PASSWORD="$(gcloud secrets versions access latest \
+            --secret="${SECRET_ID}" --project="${PROJECT_ID}")"
+          case "${DB_PASSWORD}" in
+            ''|*$'\n'*|*$'\r'*)
+              echo 'Secret Manager no devolvió una contraseña válida.' >&2
+              exit 1
+              ;;
+          esac
+          echo "::add-mask::${DB_PASSWORD}"
+          export DB_PASSWORD
+
+          set +e
+          plan_output="$(env -u CLOUD_SQL_CONNECTION_NAME -u DB_PASSWORD_FILE \
+            npm run schema:bootstrap -- plan 2>&1)"
+          plan_exit=$?
+          set -e
+          if grep -F -q -- "${DB_PASSWORD}" <<< "${plan_output}"; then
+            echo 'La salida del comando contiene material sensible.' >&2
+            exit 1
+          fi
+          if ! kill -0 "${proxy_pid}" 2>/dev/null; then
+            echo 'El Auth Proxy terminó durante la inspección.' >&2
+            exit 1
+          fi
+          if [ "${plan_exit}" -ne 0 ]; then
+            echo "La inspección falló (código ${plan_exit})." >&2
+            exit "${plan_exit}"
+          fi
+          declared="$(printf '%s\n' "${plan_output}" | sed -n 's/^instanciaEsperada=//p' | tail -n 1)"
+          action="$(printf '%s\n' "${plan_output}" | sed -n 's/^accion=//p' | tail -n 1)"
+          if [ "${declared}" != "${expected}" ]; then
+            echo 'El plan no declaró la instancia autorizada.' >&2
+            exit 1
+          fi
+          case "${action}" in
+            already-applied|adoption-required|apply)
+              echo "instanciaEsperada=${expected}"
+              echo "accion=${action}"
+              echo "### Esquema Cloud SQL: ${action}" >> "${GITHUB_STEP_SUMMARY}"
+              ;;
+            *)
+              echo 'PLAN no devolvió una clasificación reconocida.' >&2
+              exit 1
+              ;;
+          esac
