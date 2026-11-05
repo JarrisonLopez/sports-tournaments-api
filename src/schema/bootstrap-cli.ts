@@ -34,6 +34,11 @@ export async function executeBootstrapCommand(
   try {
     assertBootstrapTarget(target);
 
+    if (target.expectedInstance) {
+      // Declaración del operador. No comprueba la instancia detrás del proxy.
+      log(`instanciaEsperada=${target.expectedInstance}`);
+    }
+
     if (command !== "plan") {
       assertConfirmed(target);
     }

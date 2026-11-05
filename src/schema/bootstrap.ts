@@ -17,6 +17,7 @@ import {
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const FORBIDDEN_SQL =
   /\b(drop|truncate|alter|rename|delete|update|grant|revoke|replace|insert|call|load|outfile|dumpfile)\b/i;
+const INSTANCE_COMPONENT = /^[a-z](?:[a-z0-9-]{0,96}[a-z0-9])?$/;
 
 export class BootstrapRejectedError extends Error {
   constructor(message: string) {
@@ -48,6 +49,7 @@ export type BootstrapTarget = {
   allowHost: string;
   confirmDatabase?: string;
   cloudSqlConnectionName?: string;
+  expectedInstance?: string;
 };
 
 export type ColumnSnapshot = ColumnExpectation & {
@@ -96,7 +98,16 @@ export function targetFromEnv(
     allowHost: env.DB_BOOTSTRAP_ALLOW_HOST?.trim() ?? "",
     confirmDatabase,
     cloudSqlConnectionName: env.CLOUD_SQL_CONNECTION_NAME,
+    expectedInstance: declaredInstance(env.DB_BOOTSTRAP_EXPECT_INSTANCE),
   };
+}
+
+function declaredInstance(value: string | undefined): string | undefined {
+  if (value === undefined || value === "") {
+    return undefined;
+  }
+
+  return value;
 }
 
 export function assertBootstrapTarget(target: BootstrapTarget): void {
@@ -134,6 +145,33 @@ export function assertBootstrapTarget(target: BootstrapTarget): void {
 
   if (!target.password) {
     throw new BootstrapRejectedError("falta la contraseña de la base desechable");
+  }
+
+  // ALLOW_HOST solo compara el host TCP declarado.
+  // EXPECT_INSTANCE solo declara proyecto:region:instancia.
+  // Ninguna de las dos inspecciona el destino remoto del Cloud SQL Auth Proxy.
+  // El workflow de GCP, cuando exista, deberá exigir un valor no vacío y comprobar
+  // por su cuenta el destino del Auth Proxy. Debe fallar si no coinciden la
+  // configuración, los metadatos de la instancia y el argumento de arranque.
+  assertExpectedInstance(target.expectedInstance);
+}
+
+export function assertExpectedInstance(value: string | undefined): void {
+  if (value === undefined || value === "") {
+    return;
+  }
+
+  const parts = value.split(":");
+  const declared =
+    parts.length === 3 &&
+    parts.every(
+      (part) => INSTANCE_COMPONENT.test(part) && !part.includes("--"),
+    );
+
+  if (!declared) {
+    throw new BootstrapRejectedError(
+      "DB_BOOTSTRAP_EXPECT_INSTANCE debe ser proyecto:region:instancia; solo declara el destino previsto",
+    );
   }
 }
 

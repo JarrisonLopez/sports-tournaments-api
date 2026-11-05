@@ -16,6 +16,7 @@ import {
   adoptBootstrap,
   applyBootstrap,
   assertBootstrapTarget,
+  assertExpectedInstance,
   assertStatementSafe,
   BootstrapPartialError,
   BootstrapRejectedError,
@@ -251,7 +252,110 @@ describe("bootstrap de esquema", () => {
     expect(plan.statements).toEqual(APPLICATION_DDL);
     expect(client.queries.some((sql) => sql.startsWith("CREATE"))).toBe(false);
   });
+
+  it("declara una instancia con formato válido y no la trata como verificada", async () => {
+    const declared = "proyecto:us-central1:sports-demo-mysql";
+    const lines: string[] = [];
+    const code = await executeBootstrapCommand(
+      ["plan"],
+      localEnv({ DB_BOOTSTRAP_EXPECT_INSTANCE: declared, DB_PORT: "1" }),
+      (line) => lines.push(line),
+    );
+    const output = lines.join("\n");
+
+    expect(code).toBe(1);
+    expect(output).toContain(`instanciaEsperada=${declared}`);
+    expect(output).not.toMatch(/instanciaVerificada|instanciaAutenticada/);
+    expect(output).not.toContain("local-secret");
+    expect(targetFromEnv(localEnv({ DB_BOOTSTRAP_EXPECT_INSTANCE: declared })).expectedInstance).toBe(
+      declared,
+    );
+  });
+
+  it("rechaza formatos de instancia incompletos, extra o con caracteres de control", () => {
+    const rejected = [
+      "proyecto:sports-demo-mysql",
+      "proyecto::sports-demo-mysql",
+      ":us-central1:sports-demo-mysql",
+      "proyecto:us-central1",
+      "proyecto:us-central1:",
+      "proyecto:us-central1:sports-demo-mysql:extra",
+      "proyecto: us-central1:sports-demo-mysql",
+      "proyecto:us-central1:sports-demo-mysql ",
+      "proyecto:us-central1:sports-demo-mysql\n",
+      "proyecto:us-central1:sports-demo-mysql\r",
+      "proyecto:us-central1:sports-demo-mysql\t",
+      "proyecto:us-central1:sports-\u0001demo",
+    ];
+
+    for (const value of rejected) {
+      expect(() => assertExpectedInstance(value)).toThrow(
+        /proyecto:region:instancia/,
+      );
+    }
+
+    expect(() => assertExpectedInstance(undefined)).not.toThrow();
+    expect(() => assertExpectedInstance("")).not.toThrow();
+  });
+
+  it("en local omite la declaración y conserva plan, confirmaciones, historial y checksum", async () => {
+    expect(targetFromEnv(localEnv()).expectedInstance).toBeUndefined();
+    expect(() => assertBootstrapTarget(targetFromEnv(localEnv()))).not.toThrow();
+
+    const client = mutableClient();
+    const plan = await planBootstrap(client, targetFromEnv(localEnv()));
+    expect(plan.action).toBe("apply");
+    expect(client.queries.some((sql) => sql.startsWith("CREATE"))).toBe(false);
+    expect(client.queries.some((sql) => /drop|truncate|alter/i.test(sql))).toBe(false);
+
+    const declared = targetFromEnv(localEnv({ DB_BOOTSTRAP_EXPECT_INSTANCE: "proyecto:us-central1:sports-demo-mysql" }));
+    await expect(applyBootstrap(client, declared)).rejects.toThrow(/--confirm/);
+    await expect(adoptBootstrap(mutableClient("synchronized"), declared)).rejects.toThrow(/--confirm/);
+    expect(client.queries.some((sql) => sql.startsWith("CREATE"))).toBe(false);
+
+    const confirmed = targetFromEnv(
+      localEnv({ DB_BOOTSTRAP_EXPECT_INSTANCE: "proyecto:us-central1:sports-demo-mysql" }),
+      "sports_bootstrap_empty",
+    );
+    const applied = await applyBootstrap(mutableClient(), confirmed);
+    expect(applied.action).toBe("already-applied");
+    expect(classifySnapshot(appliedSnapshot()).action).toBe("already-applied");
+    expect(appliedSnapshot().history).toEqual([
+      { version: BOOTSTRAP_VERSION, checksum: applicationChecksum() },
+    ]);
+  });
+
+  it("rechaza la instancia malformada antes de conectar y sin imprimir la contraseña", async () => {
+    const lines: string[] = [];
+    const code = await executeBootstrapCommand(
+      ["apply", "--confirm", "sports_bootstrap_empty"],
+      localEnv({
+        DB_PORT: "1",
+        DB_BOOTSTRAP_EXPECT_INSTANCE: "local-secret\nproyecto:us-central1:instancia",
+      }),
+      (line) => lines.push(line),
+    );
+    const output = lines.join("\n");
+
+    expect(code).toBe(1);
+    expect(output).toMatch(/DB_BOOTSTRAP_EXPECT_INSTANCE/);
+    expect(output).not.toContain("instanciaEsperada=");
+    expect(output).not.toContain("local-secret");
+    expect(output).not.toContain("accion=");
+  });
 });
+
+function localEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  return {
+    DB_HOST: "127.0.0.1",
+    DB_PORT: "33066",
+    DB_USER: "sports_boot",
+    DB_PASSWORD: "local-secret",
+    DB_NAME: "sports_bootstrap_empty",
+    DB_BOOTSTRAP_ALLOW_HOST: "127.0.0.1",
+    ...overrides,
+  };
+}
 
 function recordingClient(current: SchemaSnapshot): SqlClient & { queries: string[] } {
   return {
