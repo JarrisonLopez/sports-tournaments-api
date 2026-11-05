@@ -41,6 +41,27 @@ export async function buscarPorId(id: number) {
   });
 }
 
+/**
+ * Torneos con fechaInicio (DATE) mayor o igual a una fecha de calendario.
+ * El filtro, el orden y el límite se resuelven en MySQL.
+ */
+export async function buscarProximos(filtros: {
+  fechaInicioDesde: string;
+  limite: number;
+}) {
+  const torneoRepository = getTorneoRepository();
+
+  return torneoRepository
+    .createQueryBuilder("torneo")
+    .where("torneo.fechaInicio >= :fechaInicioDesde", {
+      fechaInicioDesde: filtros.fechaInicioDesde,
+    })
+    .orderBy("torneo.fechaInicio", "ASC")
+    .addOrderBy("torneo.id", "ASC")
+    .take(filtros.limite)
+    .getMany();
+}
+
 export async function actualizar(
   id: number,
   datos: {
