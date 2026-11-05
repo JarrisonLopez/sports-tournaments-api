@@ -1,5 +1,7 @@
-import { Torneo } from "../entities/Torneo";
-import { buscarProximos } from "./torneo.service";
+import {
+  buscarProximos,
+  type FilaTorneoProximo,
+} from "./torneo.service";
 
 export const PROXIMOS_LIMITE_PREDETERMINADO = 20;
 export const PROXIMOS_LIMITE_MAXIMO = 50;
@@ -73,9 +75,15 @@ export async function listarProximos(opciones: {
   return torneos.map(toTorneoProximo);
 }
 
-function toTorneoProximo(torneo: Torneo): TorneoProximo {
+function toTorneoProximo(torneo: FilaTorneoProximo): TorneoProximo {
+  const id = Number(torneo.id);
+
+  if (!Number.isInteger(id)) {
+    throw new TorneoProximosError("identificador inválido");
+  }
+
   return {
-    id: torneo.id,
+    id,
     nombre: torneo.nombre,
     deporte: torneo.deporte,
     estado: torneo.estado,
@@ -86,11 +94,7 @@ function toTorneoProximo(torneo: Torneo): TorneoProximo {
 
 function toDateOnlyString(value: string | Date): string {
   if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) {
-      throw new TorneoProximosError("fecha inválida");
-    }
-
-    return fechaCalendarioUtc(value);
+    throw new TorneoProximosError("fecha inválida");
   }
 
   if (typeof value !== "string") {

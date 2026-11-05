@@ -90,11 +90,11 @@ describe("listarProximos", () => {
     });
   });
 
-  it("normaliza DATE de mysql2 sin correr el día por la zona local", async () => {
+  it("conserva strings de calendario y rechaza Date ambiguo", async () => {
     vi.mocked(buscarProximos).mockResolvedValue([
       torneo({
         id: 3,
-        fechaInicio: new Date("2026-11-05T00:00:00.000Z"),
+        fechaInicio: "2026-11-05",
         fechaFin: "2026-11-12 00:00:00",
       }),
     ]);
@@ -107,6 +107,18 @@ describe("listarProximos", () => {
       fechaInicioDesde: "2026-11-05",
       limite: 5,
     });
+
+    vi.mocked(buscarProximos).mockResolvedValue([
+      torneo({
+        id: 3,
+        fechaInicio: new Date(2026, 10, 5),
+        fechaFin: "2026-11-12",
+      }),
+    ]);
+
+    await expect(listarProximos({ ahora: hoy })).rejects.toBeInstanceOf(
+      TorneoProximosError,
+    );
   });
 
   it("devuelve colección vacía cuando la consulta no trae filas", async () => {

@@ -41,25 +41,41 @@ export async function buscarPorId(id: number) {
   });
 }
 
+export type FilaTorneoProximo = {
+  id: number | string;
+  nombre: string;
+  deporte: string;
+  estado: string;
+  fechaInicio: string;
+  fechaFin: string;
+};
+
 /**
  * Torneos con fechaInicio (DATE) mayor o igual a una fecha de calendario.
+ * DATE_FORMAT devuelve texto YYYY-MM-DD para que mysql2 no construya un Date.
  * El filtro, el orden y el límite se resuelven en MySQL.
  */
 export async function buscarProximos(filtros: {
   fechaInicioDesde: string;
   limite: number;
-}) {
+}): Promise<FilaTorneoProximo[]> {
   const torneoRepository = getTorneoRepository();
 
   return torneoRepository
     .createQueryBuilder("torneo")
+    .select("torneo.id", "id")
+    .addSelect("torneo.nombre", "nombre")
+    .addSelect("torneo.deporte", "deporte")
+    .addSelect("torneo.estado", "estado")
+    .addSelect("DATE_FORMAT(torneo.fechaInicio, '%Y-%m-%d')", "fechaInicio")
+    .addSelect("DATE_FORMAT(torneo.fechaFin, '%Y-%m-%d')", "fechaFin")
     .where("torneo.fechaInicio >= :fechaInicioDesde", {
       fechaInicioDesde: filtros.fechaInicioDesde,
     })
     .orderBy("torneo.fechaInicio", "ASC")
     .addOrderBy("torneo.id", "ASC")
-    .take(filtros.limite)
-    .getMany();
+    .limit(filtros.limite)
+    .getRawMany<FilaTorneoProximo>();
 }
 
 export async function actualizar(
