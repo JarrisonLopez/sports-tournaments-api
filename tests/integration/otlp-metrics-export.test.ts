@@ -16,6 +16,8 @@ import {
 
 const DEFAULT_OTLP_PORT = 4318;
 const ALLOWED_ATTRIBUTES = [
+  "api.track",
+  "api.version",
   "http.method",
   "http.route",
   "http.status_code",
@@ -258,12 +260,16 @@ describe("Exportación OTLP de métricas RED en Sports", () => {
           "http.method": "GET",
           "http.route": "/api/v2/otlp-metrics-ok",
           "http.status_code": 200,
+          "api.version": "unset",
+          "api.track": "unset",
         },
         {
           service: "sports-api",
           "http.method": "GET",
           "http.route": "/api/v2/otlp-metrics-error",
           "http.status_code": 500,
+          "api.version": "unset",
+          "api.track": "unset",
         },
       ]);
       expect(errors.sum?.dataPoints).toHaveLength(1);
@@ -273,6 +279,8 @@ describe("Exportación OTLP de métricas RED en Sports", () => {
           "http.method": "GET",
           "http.route": "/api/v2/otlp-metrics-error",
           "http.status_code": 500,
+          "api.version": "unset",
+          "api.track": "unset",
         },
       ]);
       expect(duration.unit).toBe("s");

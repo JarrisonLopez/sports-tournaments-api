@@ -12,9 +12,21 @@ import {
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { FastifyInstance, FastifyRequest } from "fastify";
 
+import {
+  resolveRuntimeIdentity,
+  type RuntimeIdentity,
+} from "../config/runtime-identity";
+
 export const HTTP_REQUESTS_METRIC = "http.server.requests";
 export const HTTP_ERRORS_METRIC = "http.server.errors";
 export const HTTP_DURATION_METRIC = "http.server.request.duration";
+export const TORNEO_LOOKUP_SUCCESS_METRIC = "sports.torneo.lookup.success";
+
+export const API_VERSION_ATTR = "api.version";
+export const API_TRACK_ATTR = "api.track";
+
+/** Plantilla Fastify (con prefijo) de la consulta compartida v2. */
+export const TORNEO_LOOKUP_SUCCESS_ROUTE = "/api/v2/torneos/:id";
 
 /**
  * Unit of http.server.request.duration.
@@ -37,9 +49,11 @@ export const METRIC_EXPORT_INTERVAL_MILLIS = 60_000;
 
 export type HttpMetrics = {
   serviceName: string;
+  identity: RuntimeIdentity;
   requests: Counter;
   errors: Counter;
   duration: Histogram;
+  torneoLookupSuccess: Counter;
   shutdown: () => Promise<void>;
 };
 
@@ -52,6 +66,7 @@ export function createHttpMetrics(
   serviceName: string,
   reader?: MetricReader,
   env: NodeJS.ProcessEnv = process.env,
+  identity: RuntimeIdentity = resolveRuntimeIdentity(env),
 ): HttpMetrics {
   const provider = new MeterProvider({
     resource: defaultResource().merge(
@@ -81,11 +96,21 @@ export function createHttpMetrics(
     },
   });
 
+  const torneoLookupSuccess = meter.createCounter(
+    TORNEO_LOOKUP_SUCCESS_METRIC,
+    {
+      description:
+        "Successful GET /api/v2/torneos/:id responses (shared stable/canary business metric)",
+    },
+  );
+
   return {
     serviceName,
+    identity,
     requests,
     errors,
     duration,
+    torneoLookupSuccess,
     shutdown: () => provider.shutdown(),
   };
 }
@@ -149,11 +174,15 @@ export function registerRedMetrics(
       return;
     }
 
+    const route = resolveHttpRoute(request);
+
     const attributes = {
       service: httpMetrics.serviceName,
       "http.method": request.method,
-      "http.route": resolveHttpRoute(request),
+      "http.route": route,
       "http.status_code": reply.statusCode,
+      [API_VERSION_ATTR]: httpMetrics.identity.version,
+      [API_TRACK_ATTR]: httpMetrics.identity.track,
     };
 
     httpMetrics.requests.add(1, attributes);
@@ -163,11 +192,31 @@ export function registerRedMetrics(
     }
 
     httpMetrics.duration.record(reply.elapsedTime / 1000, attributes);
+
+    if (isTorneoLookupSuccess(request.method, route, reply.statusCode)) {
+      httpMetrics.torneoLookupSuccess.add(1, {
+        [API_VERSION_ATTR]: httpMetrics.identity.version,
+        [API_TRACK_ATTR]: httpMetrics.identity.track,
+        "http.route": route,
+      });
+    }
   });
 
   app.addHook("onClose", async () => {
     await httpMetrics.shutdown();
   });
+}
+
+function isTorneoLookupSuccess(
+  method: string,
+  route: string,
+  statusCode: number,
+): boolean {
+  return (
+    method === "GET" &&
+    route === TORNEO_LOOKUP_SUCCESS_ROUTE &&
+    statusCode === 200
+  );
 }
 
 function pathnameOf(url: string): string {

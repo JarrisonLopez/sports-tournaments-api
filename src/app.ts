@@ -38,7 +38,12 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerServerSpanRoute(app);
   registerRedMetrics(
     app,
-    createHttpMetrics("sports-api", options.metricsReader),
+    createHttpMetrics(
+      "sports-api",
+      options.metricsReader,
+      process.env,
+      identity,
+    ),
   );
 
   app.get("/", async () => {
