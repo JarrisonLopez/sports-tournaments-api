@@ -49,9 +49,9 @@ class ValidateEntrega3DeployPlanTests(unittest.TestCase):
                 change(STORAGE, ["update"]),
             )
         )
-        self.assertTrue(ok)
-        self.assertEqual(len(allowed), 2)
-        self.assertEqual(rejected, [])
+        self.assertFalse(ok)
+        self.assertEqual(allowed, [f"{STORAGE}: update"])
+        self.assertTrue(any("canary workflow" in item for item in rejected))
 
     def test_create_missing_cloud_run_allowed(self) -> None:
         ok, allowed, rejected = validate_plan(

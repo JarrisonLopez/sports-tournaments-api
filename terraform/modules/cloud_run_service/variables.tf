@@ -89,9 +89,20 @@ variable "secret_env" {
 }
 
 variable "cloud_sql_instances" {
-  description = "Connection names montados en /cloudsql. Vacío si el servicio no usa MySQL."
+  description = "Connection names montados en /cloudsql. Sports lo deja vacío: MySQL 8.4 con caching_sha2_password no usa ese socket Unix."
   type        = list(string)
   default     = []
+}
+
+variable "service_traffic_tag" {
+  description = "Etiqueta de la revisión inicial al 100%. Vacío no escribe un bloque traffic. No representa la revisión Canary."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.service_traffic_tag == "" || can(regex("^[a-z][a-z0-9-]{0,30}[a-z0-9]$", var.service_traffic_tag))
+    error_message = "service_traffic_tag debe estar vacío o ser una etiqueta corta en minúsculas."
+  }
 }
 
 variable "allow_unauthenticated" {

@@ -101,18 +101,42 @@ resource "google_cloud_run_v2_service" "service" {
     }
   }
 
+  dynamic "traffic" {
+    for_each = trimspace(var.service_traffic_tag) == "" ? [] : [var.service_traffic_tag]
+
+    content {
+      percent = 100
+      tag     = traffic.value
+      # LATEST solo en el create inicial. Un update de template con este
+      # tipo movería el 100% a la revisión nueva. Por eso el validador
+      # rechaza cualquier update de sports-demo-api y GitHub Actions fija
+      # después los porcentajes por nombre de revisión, nunca por latest.
+      type = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
+    }
+  }
+
   lifecycle {
     precondition {
-      condition     = !strcontains(var.image, "REGION-docker.pkg.dev") && !contains(keys(var.env), "PORT")
-      error_message = "La imagen sigue siendo ilustrativa, o env intenta definir PORT. Cloud Run asigna PORT a partir de container_port."
+      condition = (
+        !strcontains(var.image, "REGION-docker.pkg.dev")
+        && !contains(keys(var.env), "PORT")
+        && !contains(keys(var.env), "DB_HOST")
+        && !contains(keys(var.env), "FAULT_INJECTION_ENABLED")
+      )
+      error_message = "La imagen sigue siendo ilustrativa, o env define PORT, DB_HOST o FAULT_INJECTION_ENABLED. DB_HOST forzaría TCP local dentro de Cloud Run. PORT lo asigna Cloud Run. Fault injection no entra en la plantilla de Terraform."
     }
 
-    # Provider google 6.50: la API rellena el scaling de SERVICIO con
-    # min_instance_count=0 y manual_instance_count=0. Cada plan propone
-    # 0 -> null sin cambiar el runtime. No es template.scaling: el mínimo
-    # y el máximo intencionales siguen en template.scaling y sí se planifican.
-    # El permadiff se corrige en google provider 7.x; no se sube en esta tarea.
-    ignore_changes = [scaling]
+    # scaling: provider google 6.50 rellena el scaling de SERVICIO con
+    # min_instance_count=0 y manual_instance_count=0. El permadiff 0 -> null
+    # no cambia template.scaling. No se sube el provider a 7.x aquí.
+    #
+    # traffic: se evaluó contra el recurso google_cloud_run_v2_service del
+    # provider ~> 6.0, sin plan remoto. ignore_changes omite traffic del
+    # update mask para que un apply posterior no reescriba los porcentajes
+    # que fija Actions. No basta por sí solo: si el tráfico de estado sigue
+    # siendo LATEST, un cambio de template crea una revisión y la API le
+    # asigna el 100%. Ese update lo bloquea el validador del workflow.
+    ignore_changes = [scaling, traffic]
   }
 }
 

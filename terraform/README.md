@@ -54,7 +54,7 @@ Con el prefijo `sports-demo`, los nombres quedan así:
 | Bucket de artifacts | El valor de `artifacts_bucket_name` (en CI: `sports-tournaments-multicloud-demo-artifacts`) |
 | Bucket de estado | `sports-tournaments-multicloud-tfstate` (creado por `bootstrap/`, no por este root) |
 
-Cloud Run escucha en el puerto 8080 y el módulo fija `PORT` con ese mismo valor. Sports recibe el socket de Cloud SQL en `/cloudsql/<connection name>` cuando existe `CLOUD_SQL_CONNECTION_NAME`. La contraseña entra por `DB_PASSWORD` como referencia a Secret Manager. Object Storage recibe `GCS_BUCKET_NAME` y no monta Cloud SQL.
+Cloud Run escucha en el puerto 8080 y el módulo fija `PORT` con ese mismo valor. Sports no monta `/cloudsql`: MySQL 8.4 usa el conector de Node y `CLOUD_SQL_CONNECTION_NAME`, con la contraseña en `DB_PASSWORD` desde Secret Manager. La plantilla de Terraform es la revisión Stable (`API_VERSION=3.0.2`, `API_TRACK=stable`, etiqueta `stable` al 100%). La revisión Canary no cabe en el mismo recurso y la crea GitHub Actions con 0% de tráfico. Object Storage recibe `GCS_BUCKET_NAME` y no monta Cloud SQL.
 
 Sports depende de la URL de Object Storage. Object Storage no llama a Sports. Esa dependencia se resuelve en un solo apply.
 
@@ -64,7 +64,9 @@ Sports depende de la URL de Object Storage. Object Storage no llama a Sports. Es
 
 En `modules/cloud_run_service`, el mínimo y el máximo intencionales viven en `template.scaling` (`min_instance_count` / `max_instance_count`) y sí se planifican.
 
-El provider `hashicorp/google` 6.50 rellena además el bloque `scaling` de **nivel servicio** (`min_instance_count=0`, `manual_instance_count=0`). Sin corrección, cada plan proponía un cambio permanente `0 → null` sin alterar el runtime. El módulo declara `lifecycle { ignore_changes = [scaling] }` solo para ese bloque de servicio. **No** ignora `template.scaling`.
+El provider `hashicorp/google` 6.50 rellena además el bloque `scaling` de **nivel servicio** (`min_instance_count=0`, `manual_instance_count=0`). Sin corrección, cada plan proponía un cambio permanente `0 → null` sin alterar el runtime. El módulo declara `lifecycle { ignore_changes = [scaling, traffic] }`. **No** ignora `template.scaling`.
+
+`traffic` se ignora para que un apply posterior no reescriba los porcentajes de Actions. Eso no impide que un cambio de `template` cree una revisión y que un tráfico `LATEST` le dé el 100%. El validador de `entrega3-gcp.yml` rechaza cualquier update de `sports-demo-api`. No se ejecutó un plan contra el estado remoto para observar el update mask del provider.
 
 ## Variables y configuración local
 

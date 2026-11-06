@@ -1,0 +1,278 @@
+name: Entrega 3 Canary
+
+# Despliegue manual del servicio único sports-demo-api.
+# WIF solo autoriza assertion.sub de refs/heads/main.
+# No usar environment: cambiaría el subject OIDC.
+# Terraform no reparte estos porcentajes. Este workflow tampoco corre en preflight.
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'preflight no toca GCP. El resto exige la confirmación indicada.'
+        required: true
+        type: choice
+        default: preflight
+        options:
+          - preflight
+          - publish
+          - deploy-stable
+          - deploy-canary
+          - promote
+          - rollback
+      confirmation:
+        description: 'PUBLISH, DEPLOY-STABLE, DEPLOY-CANARY, PROMOTE o ROLLBACK'
+        required: true
+        type: string
+      stable_digest:
+        description: 'Digest @sha256 de sports-api-v3'
+        required: false
+        type: string
+        default: ''
+      canary_digest:
+        description: 'Digest @sha256 de sports-api-v4'
+        required: false
+        type: string
+        default: ''
+      stable_revision:
+        description: 'Revisión Stable existente. Nunca latest.'
+        required: false
+        type: string
+        default: ''
+      canary_revision:
+        description: 'Revisión Canary existente. Nunca latest.'
+        required: false
+        type: string
+        default: ''
+      stable_percent:
+        description: '100, 90, 50 o 0'
+        required: false
+        type: string
+        default: '100'
+      canary_percent:
+        description: '0, 10, 50 o 100'
+        required: false
+        type: string
+        default: '0'
+      bootstrap_action:
+        description: 'accion del plan de bootstrap. ADOPT no se ejecuta.'
+        required: false
+        type: string
+        default: ''
+      observation_seconds:
+        description: 'Ventana de observación de la demostración, en segundos.'
+        required: false
+        type: string
+        default: '60'
+
+concurrency:
+  group: entrega3-gcp-terraform
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  preflight:
+    name: Local canary decisions
+    if: inputs.operation == 'preflight'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run local canary and plan tests
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_canary_rollout.py
+          python3 scripts/tests/test_validate_entrega3_deploy_plan.py
+
+  rollout:
+    name: Canary rollout
+    if: inputs.operation != 'preflight' && github.ref == 'refs/heads/main' && github.repository == 'JarrisonLopez/sports-tournaments-api' && github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: sports-tournaments-multicloud
+      REGION: us-central1
+      SERVICE: sports-demo-api
+      AR_REPOSITORY: sports-demo-images
+      WIF_PROVIDER: projects/171179411205/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+      DEPLOY_SA: sports-demo-deploy@sports-tournaments-multicloud.iam.gserviceaccount.com
+      RUNTIME_SA: sports-demo-api@sports-tournaments-multicloud.iam.gserviceaccount.com
+      CONNECTION_NAME: sports-tournaments-multicloud:us-central1:sports-demo-mysql
+      DB_SECRET: sports-demo-db-password
+      OPERATION: ${{ inputs.operation }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      STABLE_DIGEST: ${{ inputs.stable_digest }}
+      CANARY_DIGEST: ${{ inputs.canary_digest }}
+      STABLE_REVISION: ${{ inputs.stable_revision }}
+      CANARY_REVISION: ${{ inputs.canary_revision }}
+      STABLE_PERCENT: ${{ inputs.stable_percent }}
+      CANARY_PERCENT: ${{ inputs.canary_percent }}
+      BOOTSTRAP_ACTION: ${{ inputs.bootstrap_action }}
+      OBSERVATION_SECONDS: ${{ inputs.observation_seconds }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Require the matching confirmation
+        run: |
+          set -euo pipefail
+          case "${OPERATION}" in
+            publish) expected="PUBLISH" ;;
+            deploy-stable) expected="DEPLOY-STABLE" ;;
+            deploy-canary) expected="DEPLOY-CANARY" ;;
+            promote) expected="PROMOTE" ;;
+            rollback) expected="ROLLBACK" ;;
+            *) echo "Operación no desplegable."; exit 1 ;;
+          esac
+          if [ "${CONFIRMATION}" != "${expected}" ]; then
+            echo "Confirmación inválida para ${OPERATION}."
+            exit 1
+          fi
+          if ! [[ "${OBSERVATION_SECONDS}" =~ ^[0-9]+$ ]] || [ "${OBSERVATION_SECONDS}" -gt 600 ]; then
+            echo "observation_seconds debe ser un entero entre 0 y 600."
+            exit 1
+          fi
+
+      - name: Refuse an empty database or a blocked adoption
+        if: inputs.operation == 'deploy-stable' || inputs.operation == 'deploy-canary'
+        run: |
+          set -euo pipefail
+          python3 scripts/canary_rollout.py bootstrap-gate --action "${BOOTSTRAP_ACTION}"
+
+      - name: Block live GCP calls until Cloud SQL preflight is recorded
+        run: |
+          set -euo pipefail
+          echo "El conector MySQL 8.4 no se probó contra Cloud SQL."
+          echo "No hay autenticación, publicación, revisión ni cambio de tráfico en esta ejecución."
+          exit 1
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SA }}
+          token_format: access_token
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Publish immutable digests
+        if: inputs.operation == 'publish'
+        run: |
+          set -euo pipefail
+          echo "La publicación real queda detrás de PUBLISH y de este job en main."
+          echo "No se etiqueta latest y el Image ID local no se reutiliza como digest."
+          echo "Este paso no construye ni empuja imágenes hasta completar el preflight de Cloud SQL."
+          exit 1
+
+      - name: Deploy a revision without traffic
+        if: inputs.operation == 'deploy-stable' || inputs.operation == 'deploy-canary'
+        run: |
+          set -euo pipefail
+          if [ "${OPERATION}" = "deploy-stable" ]; then
+            track="stable"
+            digest="${STABLE_DIGEST}"
+          else
+            track="canary"
+            digest="${CANARY_DIGEST}"
+            python3 scripts/canary_rollout.py images --stable "${STABLE_DIGEST}" --canary "${CANARY_DIGEST}"
+          fi
+          python3 scripts/canary_rollout.py deploy-argv \
+            --track "${track}" \
+            --digest "${digest}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --service-account "${RUNTIME_SA}" \
+            --connection-name "${CONNECTION_NAME}" \
+            --secret "${DB_SECRET}" \
+            --object-storage-url "${OBJECT_STORAGE_API_URL:-}" > /tmp/deploy.json
+          python3 - <<'PY'
+          import json
+          import sys
+          argv = json.load(open("/tmp/deploy.json", encoding="utf-8"))
+          rendered = " ".join(argv)
+          if "latest" in rendered.split("--set-secrets", 1)[0]:
+              sys.exit("la imagen no puede usar latest")
+          if "--no-traffic" not in argv or "--no-allow-unauthenticated" not in argv:
+              sys.exit("el despliegue debe seguir privado y sin tráfico")
+          print("argv=valid")
+          PY
+          echo "Preflight de Cloud SQL pendiente: el conector no se probó contra la instancia. No se crea la revisión."
+          exit 1
+
+      - name: Promote one traffic step
+        if: inputs.operation == 'promote'
+        run: |
+          set -euo pipefail
+          if [ -z "${STABLE_REVISION}" ] || [ -z "${CANARY_REVISION}" ]; then
+            echo "Promover exige las dos revisiones."
+            exit 1
+          fi
+          python3 scripts/canary_rollout.py traffic-argv \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --stable-revision "${STABLE_REVISION}" \
+            --canary-revision "${CANARY_REVISION}" \
+            --stable-percent "${STABLE_PERCENT}" \
+            --canary-percent "${CANARY_PERCENT}" >/tmp/traffic-argv.json
+          echo "Observación de demostración: ${OBSERVATION_SECONDS}s. Sin métricas no se promociona."
+          echo '{"query_status":"error","reason":"el workflow no inventa muestras"}' > /tmp/canary-metrics.json
+          echo '{"query_status":"error","reason":"el workflow no inventa muestras"}' > /tmp/stable-metrics.json
+          set +e
+          python3 scripts/canary_rollout.py gate \
+            --canary-metrics /tmp/canary-metrics.json \
+            --stable-metrics /tmp/stable-metrics.json
+          gate_status="$?"
+          set -e
+          if [ "${gate_status}" -ne 0 ]; then
+            echo "PAUSE: faltan métricas reales de Cloud Monitoring. No hay cambio de tráfico."
+            exit "${gate_status}"
+          fi
+          echo "Este camino no se alcanza sin sustituir las métricas de error por una consulta real."
+          exit 1
+
+      - name: Roll traffic back to the named Stable revision
+        if: inputs.operation == 'rollback'
+        run: |
+          set -euo pipefail
+          python3 scripts/canary_rollout.py rollback-plan \
+            --stable-revision "${STABLE_REVISION}" \
+            --canary-revision "${CANARY_REVISION}" \
+            --reason "rollback solicitado" > /tmp/rollback.json
+          python3 scripts/canary_rollout.py traffic-argv \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --stable-revision "${STABLE_REVISION}" \
+            --canary-revision "${CANARY_REVISION}" \
+            --stable-percent 100 \
+            --canary-percent 0 >/tmp/traffic-argv.json
+          python3 - <<'PY'
+          import json
+          import sys
+          plan = json.load(open("/tmp/rollback.json", encoding="utf-8"))
+          argv = json.load(open("/tmp/traffic-argv.json", encoding="utf-8"))
+          if plan["traffic"][0]["percent"] != 100 or plan["delete_revisions"] is not False:
+              sys.exit("el rollback debe devolver el 100 a stable y no borrar revisiones")
+          if any(part == "latest" or str(part).endswith("=latest") for part in argv):
+              sys.exit("rollback rechazó latest")
+          print("rollback-argv=valid")
+          print("motivo=" + plan["reason"])
+          PY
+          echo "Preflight de Cloud SQL pendiente. El rollback no se envía a GCP en esta entrega."
+          exit 1
