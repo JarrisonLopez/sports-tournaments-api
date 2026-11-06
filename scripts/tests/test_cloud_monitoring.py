@@ -16,6 +16,7 @@ from cloud_monitoring import (  # noqa: E402
     REQUEST_COUNT,
     Window,
     aggregate_revision,
+    closed_window,
     gcloud_monitoring_argv,
     latency_to_milliseconds,
     percentile_from_distribution,
@@ -215,6 +216,37 @@ class CloudMonitoringTests(unittest.TestCase):
             min_samples=30,
         )
         self.assertEqual(result["query_status"], "error")
+
+    def test_closed_window_keeps_whole_minute_buckets(self) -> None:
+        now = datetime(2026, 11, 6, 22, 4, 43, tzinfo=timezone.utc)
+        chosen = closed_window(180, now=now)
+        self.assertEqual(chosen.start, datetime(2026, 11, 6, 21, 59, tzinfo=timezone.utc))
+        self.assertEqual(chosen.end, datetime(2026, 11, 6, 22, 2, tzinfo=timezone.utc))
+        self.assertEqual(chosen.seconds, 180)
+        self.assertEqual(int(chosen.start.timestamp()) % 60, 0)
+        self.assertEqual(int(chosen.end.timestamp()) % 60, 0)
+
+    def test_missing_latency_unit_uses_the_descriptor_milliseconds(self) -> None:
+        series = latency_series()
+        series.pop("unit")
+        distribution = series["points"][0]["value"]["distributionValue"]
+        distribution["mean"] = 7
+        distribution["bucketOptions"]["exponentialBuckets"] = {
+            "numFiniteBuckets": 2,
+            "growthFactor": 10,
+            "scale": 10,
+        }
+        distribution["bucketCounts"] = ["10", "0", "0", "0"]
+        result = aggregate_revision(
+            {"timeSeries": [count_series("2xx", [30]), series]},
+            project_id=PROJECT,
+            region=REGION,
+            revision=REVISION,
+            window=window(),
+            min_samples=30,
+        )
+        self.assertEqual(result["query_status"], "ok")
+        self.assertEqual(result["p95_ms"], 10)
 
     def test_monitor_command_names_the_revision_and_interval(self) -> None:
         chosen = window()

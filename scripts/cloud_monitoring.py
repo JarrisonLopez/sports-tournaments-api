@@ -16,6 +16,8 @@ from typing import Any, Mapping, Sequence
 SERVICE_NAME = "sports-demo-api"
 REQUEST_COUNT = "run.googleapis.com/request_count"
 REQUEST_LATENCIES = "run.googleapis.com/request_latencies"
+# timeSeries.list no trae unit. El descriptor de request_latencies es ms.
+REQUEST_LATENCIES_UNIT = "ms"
 CPU_UTILIZATION = "run.googleapis.com/container/cpu/utilizations"
 MEMORY_UTILIZATION = "run.googleapis.com/container/memory/utilizations"
 
@@ -62,8 +64,13 @@ def closed_window(seconds: int, *, now: datetime | None = None) -> Window:
     if current.tzinfo is None:
         current = current.replace(tzinfo=timezone.utc)
     end = current - timedelta(seconds=INGESTION_DELAY_SECONDS)
+    # Los puntos DELTA duran 60 s. Un extremo a mitad de minuto parte el bucket.
+    end_epoch = int(end.timestamp())
+    end_epoch -= end_epoch % ALIGNMENT_SECONDS
+    end = datetime.fromtimestamp(end_epoch, timezone.utc)
+    span = seconds - (seconds % ALIGNMENT_SECONDS)
     return Window(
-        start=end - timedelta(seconds=seconds),
+        start=end - timedelta(seconds=span),
         end=end,
         queried_at=current,
     )
@@ -407,9 +414,7 @@ def aggregate_revision(
             elif metric_type == REQUEST_LATENCIES:
                 if str(series.get("metricKind", "")) != "DELTA":
                     return {"query_status": "error", "reason": "la latencia no es DELTA"}
-                unit = str(series.get("unit", ""))
-                if not unit:
-                    return {"query_status": "error", "reason": "la latencia no declara unidad"}
+                unit = str(series.get("unit") or REQUEST_LATENCIES_UNIT)
                 if latency_unit and latency_unit != unit:
                     return {"query_status": "error", "reason": "las series de latencia mezclan unidades"}
                 latency_unit = unit
