@@ -299,17 +299,46 @@ def percentile_from_distribution(distribution: Mapping[str, Any], percentile: fl
     return None
 
 
+def _exponential_counts(distribution: Mapping[str, Any]) -> list[int]:
+    """Completa ceros finales. timeSeries.list recorta los buckets vacíos."""
+    options = distribution.get("bucketOptions")
+    if not isinstance(options, Mapping):
+        raise ValueError("la distribución no trae histograma")
+    exponential = options.get("exponentialBuckets")
+    if not isinstance(exponential, Mapping):
+        raise ValueError("la distribución no usa buckets exponenciales")
+    expected = int(exponential["numFiniteBuckets"]) + 2
+    raw = distribution.get("bucketCounts")
+    if not isinstance(raw, list):
+        raise ValueError("la distribución no trae histograma")
+    counts = [int(item) for item in raw]
+    if len(counts) > expected:
+        raise ValueError("no se pueden sumar histogramas de distinto tamaño")
+    if len(counts) < expected:
+        counts.extend(0 for _index in range(expected - len(counts)))
+    return counts
+
+
+def _same_exponential(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    first = left["bucketOptions"]["exponentialBuckets"]
+    second = right["bucketOptions"]["exponentialBuckets"]
+    return (
+        int(first["numFiniteBuckets"]) == int(second["numFiniteBuckets"])
+        and float(first["growthFactor"]) == float(second["growthFactor"])
+        and float(first["scale"]) == float(second["scale"])
+    )
+
+
 def _merge_distributions(parts: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
     usable = [part for part in parts if int(part.get("count", "0")) > 0]
     if not usable:
         return None
-    first_counts = usable[0]["bucketCounts"]
-    merged = [0 for _item in first_counts]
+    merged = [0 for _item in _exponential_counts(usable[0])]
     total = 0
     for part in usable:
-        counts = [int(item) for item in part["bucketCounts"]]
-        if len(counts) != len(merged):
+        if not _same_exponential(usable[0], part):
             raise ValueError("no se pueden sumar histogramas de distinto tamaño")
+        counts = _exponential_counts(part)
         total += int(part["count"])
         merged = [left + right for left, right in zip(merged, counts)]
     return {
