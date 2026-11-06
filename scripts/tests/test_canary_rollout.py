@@ -18,6 +18,7 @@ from canary_rollout import (  # noqa: E402
     decide_bootstrap,
     gcloud_deploy_argv,
     gcloud_traffic_argv,
+    revision_wait_state,
     monitoring_filter,
     normalize_metrics,
     parse_digest,
@@ -219,6 +220,41 @@ class CanaryRolloutTests(unittest.TestCase):
                 secret_id="sports-demo-db-password",
                 initial=True,
             )
+
+    def test_gcloud_ready_status_is_not_treated_as_pending(self) -> None:
+        ready = {
+            "metadata": {"name": "sports-demo-api-00001-paj"},
+            "spec": {"containers": [{"image": STABLE}]},
+            "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+        }
+        pending = {
+            "metadata": {"name": "sports-demo-api-00001-paj"},
+            "spec": {"containers": [{"image": STABLE}]},
+            "status": {"conditions": [{"type": "Ready", "status": "Unknown"}]},
+        }
+        failed = {
+            "metadata": {"name": "sports-demo-api-00001-paj"},
+            "spec": {"containers": [{"image": STABLE}]},
+            "status": {
+                "conditions": [{
+                    "type": "Ready",
+                    "status": "False",
+                    "message": "Container failed to start",
+                }]
+            },
+        }
+        self.assertEqual(revision_wait_state(ready, digest=STABLE, track="stable"), "ready")
+        self.assertEqual(revision_wait_state(pending, digest=STABLE, track="stable"), "pending")
+        self.assertEqual(revision_wait_state(failed, digest=STABLE, track="stable"), "failed")
+        other = STABLE[:-1] + "b"
+        self.assertEqual(revision_wait_state(ready, digest=other, track="stable"), "failed")
+        root = Path(__file__).resolve().parents[2]
+        workflow = (root / ".github" / "workflows" / "entrega3-canary.yml").read_text(encoding="utf-8")
+        shell = (root / "scripts" / "canary_gcp.sh").read_text(encoding="utf-8")
+        self.assertEqual(workflow.count("token_format: access_token"), 1)
+        self.assertEqual(workflow.count("token_format: id_token"), 1)
+        self.assertIn("create_credentials_file: false", workflow)
+        self.assertNotIn("print-identity-token", shell)
 
     def test_monitoring_filter_uses_native_metric(self) -> None:
         text = monitoring_filter(

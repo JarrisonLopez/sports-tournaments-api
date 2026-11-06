@@ -19,8 +19,9 @@ on:
           - deploy-canary
           - promote
           - rollback
+          - verify
       confirmation:
-        description: 'PUBLISH, DEPLOY-STABLE, DEPLOY-CANARY, PROMOTE o ROLLBACK'
+        description: 'PUBLISH, DEPLOY-STABLE, DEPLOY-CANARY, PROMOTE, ROLLBACK o VERIFY'
         required: true
         type: string
       stable_digest:
@@ -138,6 +139,7 @@ jobs:
             deploy-canary) expected="DEPLOY-CANARY" ;;
             promote) expected="PROMOTE" ;;
             rollback) expected="ROLLBACK" ;;
+            verify) expected="VERIFY" ;;
             *) echo "Operación no desplegable."; exit 1 ;;
           esac
           if [ "${CONFIRMATION}" != "${expected}" ]; then
@@ -207,7 +209,47 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Leer la URL principal del servicio
+        run: |
+          set -euo pipefail
+          url="$(gcloud run services describe "${SERVICE}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --format='value(status.url)')"
+          case "${url}" in
+            https://sports-demo-api-*.a.run.app) ;;
+            *)
+              echo "La URL principal no pertenece a sports-demo-api." >&2
+              exit 1
+              ;;
+          esac
+          echo "SERVICE_URL=${url}" >> "${GITHUB_ENV}"
+
+      - name: ID token para invocar Cloud Run
+        id: idtoken
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SA }}
+          token_format: id_token
+          id_token_audience: ${{ env.SERVICE_URL }}
+          id_token_include_email: true
+          create_credentials_file: false
+          export_environment_variables: false
+          cleanup_credentials: false
+
+      - name: Guardar el ID token sin imprimirlo
+        env:
+          ID_TOKEN: ${{ steps.idtoken.outputs.id_token }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::${ID_TOKEN}"
+          umask 077
+          printf '%s' "${ID_TOKEN}" > "${RUNNER_TEMP}/run-id-token"
+          test -s "${RUNNER_TEMP}/run-id-token"
+
       - name: Run the confirmed operation
         env:
           CANARY_GCP_EXECUTION: authorized
+          ID_TOKEN_FILE: ${{ runner.temp }}/run-id-token
         run: bash scripts/canary_gcp.sh
