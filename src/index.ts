@@ -14,6 +14,7 @@ const start = async () => {
   try {
     dataSource = await openAppDataSource();
     await bootApplication(dataSource, async () => {
+      app.log.info("Esquema de negocio comprobado");
       app.log.info("Base de datos conectada");
       await app.listen({
         port: Number(process.env.PORT) || 3000,
