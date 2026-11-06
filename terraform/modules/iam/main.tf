@@ -81,7 +81,7 @@ resource "google_project_iam_member" "deploy_run_developer" {
 # Rol a medida: solo política IAM de servicios Run (sin Owner/Editor/run.admin).
 resource "google_project_iam_custom_role" "deploy_run_service_iam" {
   project     = var.project_id
-  role_id     = "sportsDemoDeployRunServiceIam"
+  role_id     = "sportsDemoDeployRunServiceIamV2"
   title       = "Entrega 3 Deploy Cloud Run service IAM"
   description = "Permite a sports-demo-deploy gestionar bindings run.invoker en Cloud Run tras Provision."
   stage       = "GA"
