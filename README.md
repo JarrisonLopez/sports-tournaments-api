@@ -811,13 +811,13 @@ Sin valores secretos. Los nombres vacíos de base de datos local están en `.env
 | Variable | Uso |
 |---|---|
 | `PORT` | Puerto HTTP. Si no está definida, 3000 |
-| `DB_HOST` | Host MySQL cuando no hay Cloud SQL |
-| `DB_PORT` | Puerto MySQL cuando no hay Cloud SQL |
+| `DB_HOST` | Si está definido, la conexión es TCP local o de proxy y no abre Cloud SQL |
+| `DB_PORT` | Puerto TCP cuando `DB_HOST` está definido |
 | `DB_USER` | Usuario de la base |
 | `DB_PASSWORD` | Contraseña, si no se usa archivo |
 | `DB_PASSWORD_FILE` | Ruta del archivo con la contraseña. En GKE apunta al secreto montado |
 | `DB_NAME` | Nombre de la base |
-| `CLOUD_SQL_CONNECTION_NAME` | Si existe, la conexión usa el socket `/cloudsql/...` en lugar de host y puerto |
+| `CLOUD_SQL_CONNECTION_NAME` | Sin `DB_HOST`, la API usa el conector de Cloud SQL para Node (TLS, `caching_sha2_password`). No usa el socket `/cloudsql`. El preflight contra la instancia real sigue pendiente |
 | `HOTEL_API_URL` | URL base de Hotel |
 | `CINE_API_URL` | URL base de Cine |
 | `OBJECT_STORAGE_API_URL` | URL base de Object Storage |
