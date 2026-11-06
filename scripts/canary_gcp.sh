@@ -187,6 +187,7 @@ case "${OPERATION}" in
     fi
     stable_image="us-central1-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/sports-api-v3"
     canary_image="us-central1-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/sports-api-v4"
+    gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
     publish_track "${STABLE_SHA}" stable "${stable_image}" > /tmp/stable-digest.txt
     publish_track "${CANARY_SHA}" canary "${canary_image}" > /tmp/canary-digest.txt
     python3 scripts/canary_rollout.py images \
