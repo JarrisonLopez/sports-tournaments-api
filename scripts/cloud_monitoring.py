@@ -198,6 +198,37 @@ def points_inside(series: Mapping[str, Any], window: Window) -> dict[str, Any]:
     return clipped
 
 
+def assert_unique_delta_intervals(series_group: Sequence[Mapping[str, Any]]) -> None:
+    """Rechaza la misma etiqueta con intervalos que se pisan entre series."""
+    seen: dict[tuple[tuple[str, str], ...], list[tuple[datetime, datetime]]] = {}
+    for series in series_group:
+        _resource, metric_labels = _labels(series)
+        key = tuple(sorted((str(name), str(value)) for name, value in metric_labels.items()))
+        intervals = seen.setdefault(key, [])
+        points = series.get("points")
+        if not isinstance(points, list):
+            raise ValueError("la serie no trae points")
+        for point in points:
+            interval = point.get("interval")
+            if not isinstance(interval, Mapping):
+                raise ValueError("el punto no trae intervalo")
+            start = parse_rfc3339(str(interval["startTime"]))
+            end = parse_rfc3339(str(interval["endTime"]))
+            for previous_start, previous_end in intervals:
+                if start < previous_end and previous_start < end:
+                    raise ValueError("los intervalos delta de la misma etiqueta se duplican")
+            intervals.append((start, end))
+
+
+def latency_to_milliseconds(value: float, unit: str) -> float:
+    normalized = unit.strip().lower()
+    if normalized in {"s", "sec", "secs", "second", "seconds"}:
+        return value * 1000.0
+    if normalized in {"ms", "msec", "millisecond", "milliseconds"}:
+        return value
+    raise ValueError("la latencia debe declarar unidad s o ms")
+
+
 def sum_delta(series: Mapping[str, Any]) -> int:
     kind = str(series.get("metricKind", ""))
     if kind != "DELTA":
@@ -350,7 +381,14 @@ def aggregate_revision(
     requests = 0
     errors = 0
     distributions: list[Mapping[str, Any]] = []
+    latency_unit = ""
     try:
+        counted = [
+            points_inside(series, window)
+            for series in matched
+            if str(series.get("metric", {}).get("type", "")) == REQUEST_COUNT
+        ]
+        assert_unique_delta_intervals(counted)
         for series in matched:
             series = points_inside(series, window)
             metric_type = str(series["metric"]["type"])
@@ -369,6 +407,12 @@ def aggregate_revision(
             elif metric_type == REQUEST_LATENCIES:
                 if str(series.get("metricKind", "")) != "DELTA":
                     return {"query_status": "error", "reason": "la latencia no es DELTA"}
+                unit = str(series.get("unit", ""))
+                if not unit:
+                    return {"query_status": "error", "reason": "la latencia no declara unidad"}
+                if latency_unit and latency_unit != unit:
+                    return {"query_status": "error", "reason": "las series de latencia mezclan unidades"}
+                latency_unit = unit
                 for point in series.get("points", []):
                     value = point.get("value", {})
                     distribution = value.get("distributionValue")
@@ -395,10 +439,12 @@ def aggregate_revision(
     except (KeyError, TypeError, ValueError) as exc:
         return {"query_status": "error", "reason": str(exc)}
 
-    def millis(seconds: float | None) -> float | None:
-        if seconds is None:
+    def millis(value: float | None) -> float | None:
+        if value is None:
             return None
-        return seconds * 1000.0
+        if not latency_unit:
+            return None
+        return latency_to_milliseconds(value, latency_unit)
 
     return {
         "query_status": "ok",

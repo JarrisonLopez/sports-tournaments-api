@@ -17,6 +17,7 @@ from cloud_monitoring import (  # noqa: E402
     Window,
     aggregate_revision,
     gcloud_monitoring_argv,
+    latency_to_milliseconds,
     percentile_from_distribution,
     sum_delta,
     window_from_seconds,
@@ -82,6 +83,7 @@ def latency_series() -> dict:
         "resource": count_series("2xx", [1])["resource"],
         "metricKind": "DELTA",
         "valueType": "DISTRIBUTION",
+        "unit": "s",
         "points": [
             {
                 "interval": {
@@ -231,6 +233,34 @@ class CloudMonitoringTests(unittest.TestCase):
         self.assertGreaterEqual(chosen.seconds, MIN_OBSERVATION_SECONDS)
         with self.assertRaises(ValueError):
             window_from_seconds(60)
+
+    def test_milliseconds_are_not_scaled_again(self) -> None:
+        self.assertEqual(latency_to_milliseconds(1.5, "s"), 1500.0)
+        self.assertEqual(latency_to_milliseconds(1500, "ms"), 1500.0)
+        measured = latency_series()
+        measured["unit"] = "ms"
+        result = aggregate_revision(
+            {"timeSeries": [count_series("2xx", [30]), measured]},
+            project_id=PROJECT,
+            region=REGION,
+            revision=REVISION,
+            window=window(),
+            min_samples=30,
+        )
+        self.assertAlmostEqual(result["p95_ms"], 0.955, places=3)
+
+    def test_duplicate_delta_intervals_are_not_summed(self) -> None:
+        payload = {"timeSeries": [count_series("2xx", [30]), count_series("2xx", [30]), latency_series()]}
+        result = aggregate_revision(
+            payload,
+            project_id=PROJECT,
+            region=REGION,
+            revision=REVISION,
+            window=window(),
+            min_samples=30,
+        )
+        self.assertEqual(result["query_status"], "error")
+        self.assertNotIn("error_rate", result)
 
 
 if __name__ == "__main__":
