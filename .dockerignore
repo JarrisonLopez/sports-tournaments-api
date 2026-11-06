@@ -14,6 +14,8 @@ vitest.config.mts
 vitest.*.mts
 
 # Fuera de la imagen de Sports API
+scripts
+scripts/
 terraform
 terraform/
 object-storage
