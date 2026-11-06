@@ -217,6 +217,32 @@ class CloudMonitoringTests(unittest.TestCase):
         )
         self.assertEqual(result["query_status"], "error")
 
+    def test_truncated_latency_buckets_still_merge(self) -> None:
+        def series(counts: list[str]) -> dict:
+            measured = latency_series()
+            measured.pop("unit")
+            distribution = measured["points"][0]["value"]["distributionValue"]
+            distribution["count"] = str(sum(int(item) for item in counts))
+            distribution["bucketOptions"]["exponentialBuckets"] = {
+                "numFiniteBuckets": 4,
+                "growthFactor": 10,
+                "scale": 10,
+            }
+            distribution["bucketCounts"] = counts
+            return measured
+
+        result = aggregate_revision(
+            {"timeSeries": [count_series("2xx", [30]), series(["30"]), series(["0", "0", "4"])]},
+            project_id=PROJECT,
+            region=REGION,
+            revision=REVISION,
+            window=window(),
+            min_samples=30,
+        )
+        self.assertEqual(result["query_status"], "ok")
+        self.assertEqual(result["requests"], 30)
+        self.assertLess(result["p95_ms"], 1500)
+
     def test_closed_window_keeps_whole_minute_buckets(self) -> None:
         now = datetime(2026, 11, 6, 22, 4, 43, tzinfo=timezone.utc)
         chosen = closed_window(180, now=now)
