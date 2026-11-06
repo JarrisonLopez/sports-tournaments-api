@@ -513,18 +513,61 @@ def observed_traffic(service: Mapping[str, Any]) -> list[dict[str, object]]:
     return observed
 
 
+def _ready_condition_value(item: Mapping[str, Any]) -> str:
+    return str(item.get("status") or item.get("state") or "")
+
+
+def _revision_conditions(revision: Mapping[str, Any]) -> list[Any]:
+    conditions = revision.get("conditions")
+    if isinstance(conditions, list):
+        return conditions
+    status = revision.get("status")
+    if isinstance(status, Mapping) and isinstance(status.get("conditions"), list):
+        return list(status["conditions"])
+    return []
+
+
 def revision_ready(revision: Mapping[str, Any]) -> bool:
     if revision.get("ready") is True:
         return True
-    conditions = revision.get("conditions", [])
-    if not isinstance(conditions, list):
-        return False
+    conditions = _revision_conditions(revision)
     return any(
         isinstance(item, Mapping)
         and item.get("type") == "Ready"
-        and item.get("state") in {"CONDITION_SUCCEEDED", "True"}
+        and _ready_condition_value(item) in {"CONDITION_SUCCEEDED", "True"}
         for item in conditions
     )
+
+
+def revision_wait_state(revision: Mapping[str, Any], *, digest: str, track: str) -> str:
+    """ready, pending o failed. Un fallo de digest o de la condición no se reintenta."""
+    metadata = revision.get("metadata")
+    name = ""
+    if isinstance(metadata, Mapping):
+        name = str(metadata.get("name", ""))
+    require_revision(name or str(revision.get("name", "")), track)
+    spec = revision.get("spec") if isinstance(revision.get("spec"), Mapping) else {}
+    containers = spec.get("containers") or revision.get("containers") or []
+    image = ""
+    if isinstance(containers, list) and containers and isinstance(containers[0], Mapping):
+        image = str(containers[0].get("image", ""))
+    if image != parse_digest(digest, track):
+        return "failed"
+    if revision_ready(revision):
+        return "ready"
+    conditions = _revision_conditions(revision)
+    if conditions:
+        for item in conditions:
+            if not isinstance(item, Mapping) or item.get("type") != "Ready":
+                continue
+            value = _ready_condition_value(item)
+            message = str(item.get("message") or "").lower()
+            reason = str(item.get("reason") or "").lower()
+            if value in {"False", "CONDITION_FAILED"} and (
+                "fail" in message or "fail" in reason or reason.endswith("error")
+            ):
+                return "failed"
+    return "pending"
 
 
 def assert_revisions_ready(
@@ -768,6 +811,11 @@ def main(argv: Sequence[str]) -> int:
     check_revision.add_argument("--digest", required=True)
     check_revision.add_argument("--track", required=True, choices=("stable", "canary"))
 
+    wait_revision = sub.add_parser("revision-wait")
+    wait_revision.add_argument("--file", required=True)
+    wait_revision.add_argument("--digest", required=True)
+    wait_revision.add_argument("--track", required=True, choices=("stable", "canary"))
+
     check_split = sub.add_parser("assert-split")
     check_split.add_argument("--service", required=True)
     check_split.add_argument("--stable-revision", required=True)
@@ -892,6 +940,15 @@ def main(argv: Sequence[str]) -> int:
             revision = json.loads(open(args.file, encoding="utf-8").read())
             print(assert_deployed_revision(revision, digest=args.digest, track=args.track))
             return 0
+        if args.command == "revision-wait":
+            revision = json.loads(open(args.file, encoding="utf-8").read())
+            state = revision_wait_state(revision, digest=args.digest, track=args.track)
+            print(f"state={state}")
+            if state == "ready":
+                return 0
+            if state == "pending":
+                return 2
+            return 1
         if args.command == "assert-split":
             service = json.loads(open(args.service, encoding="utf-8").read())
             assert_observed_split(
