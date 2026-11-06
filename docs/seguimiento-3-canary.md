@@ -2,19 +2,23 @@
 
 Un solo servicio Cloud Run, `sports-demo-api`, con dos revisiones. Terraform crea la plantilla Stable. GitHub Actions crea la revisión Canary y los porcentajes. No se crea un segundo servicio.
 
+## Arquitectura
+
+Stable y Canary son commits distintos. La imagen `sports-api-v3` se construye solo si el checkout no contiene `src/routes/v4/index.ts`. La imagen `sports-api-v4` se construye solo si ese archivo existe. El workflow corre en `main` porque WIF solo autoriza esa rama, pero recibe los dos SHA y los comprueba antes de `docker build`.
+
+La audiencia del token ID es la URL principal del servicio. La petición de smoke va a la URL etiquetada `stable` o `canary`. Las cabeceras `x-api-version` y `x-api-track` identifican la revisión. Un 401 o 403 detiene la validación. `/api/v4` solo se pide en la etiqueta Canary.
+
 ## Cloud SQL MySQL 8.4
 
-La documentación de Cloud SQL dice que el socket Unix del Auth Proxy no está soportado con `caching_sha2_password`. El volumen `/cloudsql` de Cloud Run usa ese socket y no permite fijar Auth Proxy >= 2.19.0. Por eso la API no abre `/cloudsql/<connection name>`.
+Sin `DB_HOST`, y con `CLOUD_SQL_CONNECTION_NAME` válido, el proceso usa `@google-cloud/cloud-sql-connector` 1.12.1. La contraseña sigue en Secret Manager. No se usa el usuario `root`.
 
-Sin `DB_HOST`, y con `CLOUD_SQL_CONNECTION_NAME` válido, el proceso usa `@google-cloud/cloud-sql-connector` 1.12.1: TLS a la IP pública ya existente, sin redes autorizadas, con la cuenta de servicio (`cloudsql.client`) y `AuthTypes.PASSWORD`. La contraseña sigue en Secret Manager. No se usa el usuario `root`.
+El arranque lee las columnas de `torneos`, `canchas` y `jugadores` y solo entonces escribe `Esquema de negocio comprobado`. `/health/ready` sigue siendo `SELECT 1`. El preflight exige las dos cosas: ready 200 y esa línea en los logs de la revisión. Si falta la línea, ready no autoriza tráfico.
 
-Con `DB_HOST`, la conexión es TCP. El desarrollo, el bootstrap y las pruebas quedan en ese camino y no construyen el conector. Vitest rechaza el cargador real.
+Ese preflight no se ha ejecutado contra `sports-demo-mysql`. `scripts/canary_gcp.sh` lo hace en el momento del despliegue, después de crear la revisión sin tráfico y antes de mover porcentajes. Si falla, el script termina y no llama a `update-traffic`.
 
-Esa ruta no se ejecutó contra la instancia `sports-demo-mysql`. Antes del primer despliegue hace falta un preflight: una revisión sin tráfico, `SELECT 1` y el arranque de esquema, con la misma cuenta y el mismo secreto. Si falla, no se mueve tráfico.
+## Bootstrap
 
-## Bootstrap y despliegue
-
-`synchronize`, `migrationsRun` y `dropSchema` siguen en `false`. El arranque solo lee columnas. Eso no equivale al historial.
+`synchronize`, `migrationsRun` y `dropSchema` siguen en `false`.
 
 | `accion` del plan | Decisión | ADOPT |
 |---|---|---|
@@ -23,16 +27,21 @@ Esa ruta no se ejecutó contra la instancia `sports-demo-mysql`. Antes del prime
 | `adoption-required` | bloquea; hay tablas sin historial canónico | no se ejecuta |
 | `incompatible` | bloquea | no |
 
-`entrega3-gcp.yml` ya no construye Sports. Cualquier update de `sports-demo-api` lo rechaza `scripts/validate_entrega3_deploy_plan.py`, porque un cambio de plantilla con tráfico `LATEST` puede llevar el 100% a la revisión nueva. `ignore_changes = [scaling, traffic]` evita reescribir porcentajes; no se comprobó con un plan remoto y no sustituye al validador.
+Una base creada antes por `synchronize` puede hacer arrancar el proceso y, a la vez, clasificarse como `adoption-required`. ADOPT sigue bloqueado. Ese estado no se trata como desplegable.
 
-## Tráfico
+## Métricas
 
-1. Stable 100 / Canary 0
-2. 90 / 10
-3. 50 / 50
-4. 0 / 100
+El quality gate lee `timeSeries.list` de Cloud Monitoring. No consulta GCP en las pruebas.
 
-La comparación usa `GET /api/v2/torneos/1`. Las rutas `/api/v4` solo se llaman por la URL etiquetada. Al llegar al 100% de Canary la revisión Stable permanece.
+| Métrica | Uso |
+|---|---|
+| `run.googleapis.com/request_count` | solicitudes y 5xx por `response_code_class` |
+| `run.googleapis.com/request_latencies` | p50, p95 y p99 |
+| CPU y memoria de la revisión | observabilidad, no criterio de promoción |
+
+Los filtros exigen proyecto, región `us-central1`, servicio `sports-demo-api` y el nombre exacto de la revisión. Los contadores son DELTA: se suman puntos que no se solapan. Una serie CUMULATIVE no se suma. Las latencias son DISTRIBUTION en segundos y se convierten a milisegundos. Si el percentil cae en el bucket de overflow, p95 queda ausente.
+
+Una consulta fallida, una serie de otra revisión o una lista vacía no equivalen a cero errores. Cero errores HTTP solo se acepta cuando la consulta fue válida y hubo solicitudes. Cloud Monitoring muestrea cada 60 segundos y puede tardar hasta 120 segundos más en publicar. La ventana mínima es 180 segundos y termina 120 segundos antes de la consulta. Una espera de 60 segundos no se acepta como evidencia.
 
 ## Umbrales de demostración
 
@@ -40,26 +49,66 @@ No son SLO de producción.
 
 | Control | Valor |
 |---|---|
-| Muestras mínimas | 30 |
+| Muestras mínimas por revisión | 30, leídas en Monitoring |
 | Error rate | 5%, o más de 2 puntos sobre Stable |
 | p95 | 1500 ms, o más del doble del p95 de Stable |
-| Observación | 60 s, configurable hasta 600 s |
+| Ventana | 180 s a 600 s |
+| Reintentos de consulta | 3, con 20 s entre ellos, solo si el estado es error o todavía no publicado |
+| Espera máxima | 600 s |
 
-`continue` avanza. `pause` no cambia tráfico y no hace rollback: métricas ausentes, consulta fallida o latencia ilegible. Una consulta fallida no cuenta como cero errores. `abort` es el rollback: error rate, p95, smoke 5xx o fault injection. El rollback devuelve 100% a la revisión Stable nombrada, deja Canary en 0 y no borra revisiones ni toca Cloud SQL.
+`continue` exige métricas válidas dentro de los umbrales. La única excepción es el paso 0% → 10%: se admite por smoke y por el preflight del conector, y esa admisión no cuenta como éxito de las métricas.
 
-Las métricas previstas son las nativas `run.googleapis.com/request_count` y las latencias, CPU y memoria del recurso `cloud_run_revision`. El código OpenTelemetry no tiene exportador en Cloud Run (`otel_exporter_otlp_endpoint` vacío), así que esas series no están en Cloud Monitoring.
+`pause` no promociona. Cubre datos insuficientes, series todavía no publicadas y una ventana demasiado corta.
 
-## Imágenes
+`abort` cubre una regresión confirmada, un smoke fallido y la falta de observabilidad cuando Canary ya tiene tráfico y la espera llegó a 600 segundos. En ese último caso el motivo queda escrito como falta de observabilidad, no como regresión comprobada, y el tráfico vuelve a Stable.
 
-Stable `v3.0.2` en `sports-api-v3`. Canary `v4.0.0` en `sports-api-v4`. Las dos por digest `@sha256` y SHA de Git. Un Image ID local no es un digest del registry. No se publicaron imágenes ni tags.
+## Tráfico y carga
 
-## Primera ejecución real
+1. Stable 100 / Canary 0
+2. 90 / 10
+3. 50 / 50
+4. 0 / 100
 
-1. Confirmar el plan de bootstrap `already-applied` con el workflow de esquema. No usar ADOPT.
-2. Ejecutar el preflight del conector en una revisión sin tráfico.
-3. Quitar el paso que bloquea las llamadas a GCP en `entrega3-canary.yml`.
-4. Publicar los dos digests. No usar `latest`.
-5. `deploy-stable` con `--no-traffic`, smoke en la URL `stable` sobre `/api/v2/torneos/1`, y solo después 100% a esa revisión.
-6. `deploy-canary` con `--no-traffic` y etiqueta `canary`. Smoke de `/api/v4` solo en esa URL.
-7. Sustituir el fixture de error del paso `promote` por una consulta real. Sin muestras, el job debe seguir en pausa.
-8. No correr `entrega3-gcp.yml` para cambiar Sports mientras exista el reparto.
+No se saltan etapas. El tráfico se describe antes de cambiarlo y se vuelve a describir después. La comparación usa `GET /api/v2/torneos`, que existe en las dos revisiones y no depende de un id.
+
+La carga de demostración va a la URL principal. Al 10% hacen falta 450 solicitudes para que la porción menor pueda acercarse a 30 muestras, con tope de 800 solicitudes, concurrencia 4, duración 240 segundos y un reintento. Treinta solicitudes totales no son 30 muestras de Canary. Las muestras se leen después, por revisión, en Monitoring. Esta carga no se ejecutó.
+
+El rollback deja Stable al 100% y Canary al 0% en las revisiones nombradas. No borra revisiones. Si `update-traffic` falla, el resultado no se da por restaurado.
+
+## Terraform
+
+`entrega3-gcp.yml` no construye Sports. El validador rechaza cualquier update de `sports-demo-api`: la plantilla guardada usa tráfico `LATEST` y un apply de plantilla puede mover el 100% a la revisión nueva. `ignore_changes = [scaling, traffic]` se validó con el provider 6.50.0 sin plan remoto. Omite el tráfico de la máscara de update y no impide que la API mueva un objetivo `LATEST`.
+
+No se hizo `terraform apply` ni se consultó el estado remoto. Si más adelante hay que cambiar la plantilla Stable con Terraform, el procedimiento queda pendiente y no se ejecuta ahora:
+
+1. Describir el tráfico real y anotar los nombres de revisión y los porcentajes.
+2. Pasar el tráfico a revisiones concretas, no a `LATEST`, con el workflow Canary.
+3. Revisar un plan que no cambie `sports-demo-api` mientras esos porcentajes existan.
+4. No aplicar el módulo raíz para “actualizar la imagen” durante un canary.
+
+## Primera ejecución autorizada
+
+WIF solo autoriza `refs/heads/main`. No se mezclan los árboles: Stable es el commit que no tiene rutas v4 y Canary es el commit que sí las tiene. Los dos SHA tienen que existir en el remoto antes de lanzar el workflow. No se reutiliza un tag SemVer. El digest se lee de Artifact Registry después del push.
+
+Orden:
+
+1. Integrar en `main` el commit Stable y el commit Canary como referencias alcanzables, sin construir Stable desde el árbol Canary. No está hecho en esta entrega.
+2. Confirmar el plan de bootstrap. `already-applied` permite desplegar. `apply` exige el workflow de esquema antes. `adoption-required` bloquea, aunque el proceso pueda arrancar. ADOPT no se ejecuta.
+3. En `main`, despachar `entrega3-canary.yml` con operación `publish`, confirmación `PUBLISH` y `source_shas` con los dos SHA separados por coma. `timing` queda en `180,0`. Guardar los digests impresos.
+4. `deploy-stable` con `DEPLOY-STABLE`, el digest y `already-applied`. El script crea la revisión sin tráfico, comprueba digest, ready, logs y `/health/ready`, y solo después asigna 100% a esa revisión.
+5. `deploy-canary` con `DEPLOY-CANARY`. Smoke de `/api/v2/torneos` y de `/api/v4/torneos/estadisticas` en la URL etiquetada. No asigna tráfico.
+6. `promote` con `PROMOTE`, de 0 a 10, luego de 10 a 50 y de 50 a 100. Entre las etapas con tráfico, la ventana es de al menos 180 segundos. Si el gate aborta, el mismo job devuelve 100% a Stable y verifica el resultado.
+7. `rollback` con `ROLLBACK` si hace falta repetir la restauración.
+8. No correr `entrega3-gcp.yml` para cambiar Sports mientras el reparto exista.
+
+El conector sigue sin una prueba real. El primer `deploy-stable` es esa prueba. Si los logs no contienen `Esquema de negocio comprobado`, no hay promoción.
+
+## Evidencias para la sustentación
+
+- SHA de Stable y de Canary, y los dos digests de Artifact Registry.
+- Nombre exacto de cada revisión, leído del despliegue y verificado con `gcloud run revisions describe`.
+- Respuesta de `timeSeries.list` filtrada por revisión, con `response_code_class` y el histograma de latencia.
+- Decisión `continue`, `pause` o `abort`, con el motivo.
+- Tráfico descrito antes y después de cada porcentaje.
+- Log `Esquema de negocio comprobado` y ready 200 de la revisión sin tráfico.
+- Si hubo rollback, el 100% verificado en la revisión Stable y la revisión Canary conservada en 0%.
