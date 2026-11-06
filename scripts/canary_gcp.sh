@@ -149,15 +149,29 @@ deploy_track() {
   local track="$1"
   local digest="$2"
   local version="$3"
-  python3 scripts/canary_rollout.py deploy-argv \
-    --track "${track}" \
-    --digest "${digest}" \
-    --project "${PROJECT_ID}" \
-    --region "${REGION}" \
-    --service-account "${RUNTIME_SA}" \
-    --connection-name "${CONNECTION_NAME}" \
-    --secret "${DB_SECRET}" \
-    --object-storage-url "${OBJECT_STORAGE_API_URL:-}" > /tmp/deploy.json
+  local mode="${4:-update}"
+  if [ "${mode}" = "initial" ]; then
+    python3 scripts/canary_rollout.py deploy-argv \
+      --track "${track}" \
+      --digest "${digest}" \
+      --project "${PROJECT_ID}" \
+      --region "${REGION}" \
+      --service-account "${RUNTIME_SA}" \
+      --connection-name "${CONNECTION_NAME}" \
+      --secret "${DB_SECRET}" \
+      --object-storage-url "${OBJECT_STORAGE_API_URL:-}" \
+      --initial > /tmp/deploy.json
+  else
+    python3 scripts/canary_rollout.py deploy-argv \
+      --track "${track}" \
+      --digest "${digest}" \
+      --project "${PROJECT_ID}" \
+      --region "${REGION}" \
+      --service-account "${RUNTIME_SA}" \
+      --connection-name "${CONNECTION_NAME}" \
+      --secret "${DB_SECRET}" \
+      --object-storage-url "${OBJECT_STORAGE_API_URL:-}" > /tmp/deploy.json
+  fi
   run_argv /tmp/deploy.json /tmp/deploy-response.json
   python3 scripts/canary_rollout.py created-revision \
     --file /tmp/deploy-response.json > /tmp/created-revision.txt
@@ -195,16 +209,28 @@ case "${OPERATION}" in
     ;;
   deploy-stable)
     : "${STABLE_DIGEST:?}"
-    revision="$(deploy_track stable "${STABLE_DIGEST}" "3.0.2")"
-    python3 scripts/canary_rollout.py pin-argv \
-      --project "${PROJECT_ID}" \
-      --region "${REGION}" \
-      --revision "${revision}" > /tmp/pin.json
-    run_argv /tmp/pin.json
-    describe_service
-    python3 scripts/canary_rollout.py assert-pin \
-      --service /tmp/service.json \
-      --revision "${revision}"
+    mode="update"
+    if ! gcloud run services describe "${SERVICE}" \
+      --project="${PROJECT_ID}" \
+      --region="${REGION}" \
+      --format='value(metadata.name)' >/dev/null 2>&1; then
+      echo "Creación inicial: Stable recibe el 100%."
+      mode="initial"
+    else
+      echo "El servicio ya existe. Stable se despliega sin tráfico y el reparto no cambia."
+    fi
+    revision="$(deploy_track stable "${STABLE_DIGEST}" "3.0.2" "${mode}")"
+    if [ "${mode}" = "initial" ]; then
+      python3 scripts/canary_rollout.py pin-argv \
+        --project "${PROJECT_ID}" \
+        --region "${REGION}" \
+        --revision "${revision}" > /tmp/pin.json
+      run_argv /tmp/pin.json
+      describe_service
+      python3 scripts/canary_rollout.py assert-pin \
+        --service /tmp/service.json \
+        --revision "${revision}"
+    fi
     ;;
   deploy-canary)
     : "${STABLE_DIGEST:?}"

@@ -348,11 +348,14 @@ def gcloud_deploy_argv(
     database_user: str,
     database_name: str,
     secret_id: str,
+    initial: bool = False,
 ) -> list[str]:
     if service != "sports-demo-api":
         raise ValueError("el canary vive en el servicio único sports-demo-api")
     if track not in {"stable", "canary"}:
         raise ValueError("track inválido")
+    if initial and track != "stable":
+        raise ValueError("solo la creación inicial de Stable puede recibir tráfico")
     version = "3.0.2" if track == "stable" else "4.0.0"
     image = parse_digest(digest, track)
     env_pairs = [
@@ -367,7 +370,7 @@ def gcloud_deploy_argv(
     env = ",".join(env_pairs)
     if "FAULT_INJECTION_ENABLED" in env or "DB_HOST=" in env:
         raise ValueError("el despliegue no define DB_HOST ni fault injection")
-    return [
+    command = [
         "gcloud",
         "run",
         "deploy",
@@ -375,14 +378,18 @@ def gcloud_deploy_argv(
         f"--project={project_id}",
         f"--region={region}",
         f"--image={image}",
-        "--no-traffic",
+    ]
+    if not initial:
+        command.append("--no-traffic")
+    command.extend([
         f"--tag={track}",
         f"--service-account={service_account}",
         "--no-allow-unauthenticated",
         "--clear-cloudsql-instances",
         f"--set-env-vars={env}",
         f"--set-secrets=DB_PASSWORD={secret_id}:latest",
-    ]
+    ])
+    return command
 
 
 def gcloud_traffic_argv(
@@ -811,6 +818,7 @@ def main(argv: Sequence[str]) -> int:
     deploy.add_argument("--connection-name", required=True)
     deploy.add_argument("--secret", required=True)
     deploy.add_argument("--object-storage-url", default="")
+    deploy.add_argument("--initial", action="store_true")
 
     args = parser.parse_args(list(argv))
     try:
@@ -951,6 +959,7 @@ def main(argv: Sequence[str]) -> int:
             database_user="sports_user",
             database_name="sports_db",
             secret_id=args.secret,
+            initial=args.initial,
         )
         print(json.dumps(argv))
         return 0

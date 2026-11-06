@@ -180,6 +180,46 @@ class CanaryRolloutTests(unittest.TestCase):
         self.assertNotIn("sports_user_password", rendered)
         self.assertIn("sports-api-v4@", rendered)
 
+    def test_initial_stable_deploy_receives_traffic_and_stays_private(self) -> None:
+        argv = gcloud_deploy_argv(
+            track="stable",
+            project_id="sports-tournaments-multicloud",
+            region="us-central1",
+            service="sports-demo-api",
+            digest=STABLE,
+            service_account="sports-demo-api@sports-tournaments-multicloud.iam.gserviceaccount.com",
+            connection_name="sports-tournaments-multicloud:us-central1:sports-demo-mysql",
+            object_storage_url="",
+            database_user="sports_user",
+            database_name="sports_db",
+            secret_id="sports-demo-db-password",
+            initial=True,
+        )
+        rendered = " ".join(argv)
+        self.assertNotIn("--no-traffic", argv)
+        self.assertIn("--no-allow-unauthenticated", argv)
+        self.assertIn("--tag=stable", argv)
+        self.assertIn("API_VERSION=3.0.2", rendered)
+        self.assertIn("API_TRACK=stable", rendered)
+        self.assertIn("sports-api-v3@", rendered)
+        self.assertNotIn("FAULT_INJECTION_ENABLED", rendered)
+        self.assertNotIn("latest", rendered.split("@sha256:", 1)[0])
+        with self.assertRaises(ValueError):
+            gcloud_deploy_argv(
+                track="canary",
+                project_id="sports-tournaments-multicloud",
+                region="us-central1",
+                service="sports-demo-api",
+                digest=CANARY,
+                service_account="sports-demo-api@sports-tournaments-multicloud.iam.gserviceaccount.com",
+                connection_name="sports-tournaments-multicloud:us-central1:sports-demo-mysql",
+                object_storage_url="",
+                database_user="sports_user",
+                database_name="sports_db",
+                secret_id="sports-demo-db-password",
+                initial=True,
+            )
+
     def test_monitoring_filter_uses_native_metric(self) -> None:
         text = monitoring_filter(
             "sports-tournaments-multicloud",
