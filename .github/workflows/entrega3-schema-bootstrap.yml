@@ -1,16 +1,26 @@
-name: Entrega 3 - Cloud SQL Schema PLAN
+name: Entrega 3 - Cloud SQL Schema Bootstrap
 
-# Solo consulta el esquema. No contiene comandos de creación o adopción.
-# Diseñado para revisarse en feature y ejecutarse, tras aprobación, solo desde main.
-# 127.0.0.1 no identifica la instancia: el connection name autorizado, el output
-# del estado y Cloud SQL Admin API tienen que coincidir antes de arrancar el proxy.
-# sports-demo-provision tiene roles/owner. Revisar el mínimo privilegio antes de
-# dejar este camino como permanente. Un rol de IAM no es un GRANT de MySQL.
+# Inspecciona el esquema y, solo con confirmación distinta, puede crearlo en una base vacía.
+# ADOPT está preparado y deshabilitado: Terraform deja backup_configuration.enabled
+# y binary_log_enabled en false. Una confirmación de texto no demuestra un respaldo
+# recuperable, y este repositorio no tiene una prueba de restauración.
+# 127.0.0.1 no identifica la instancia. La clasificación accion=apply no autoriza
+# por sí sola la escritura. sports-demo-provision tiene roles/owner; un rol de IAM
+# no es un GRANT de MySQL.
 on:
   workflow_dispatch:
     inputs:
-      confirm_plan:
-        description: 'Escribe PLAN para inspeccionar el esquema (sin escrituras)'
+      operation:
+        description: 'Operación de esquema'
+        required: true
+        type: choice
+        default: plan
+        options:
+          - plan
+          - apply
+          - adopt
+      confirmation:
+        description: 'Escribe PLAN, APPLY:sports_db o ADOPT:sports_db'
         required: true
         type: string
 
@@ -24,10 +34,10 @@ permissions:
 
 jobs:
   schema-plan:
-    name: Read-only schema inspection
+    name: Schema bootstrap operation
     if: github.ref == 'refs/heads/main' && github.repository == 'JarrisonLopez/sports-tournaments-api' && github.event.repository.fork == false
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     # No agregar environment: alteraría el subject OIDC autorizado actualmente.
     env:
       PROJECT_ID: sports-tournaments-multicloud
@@ -43,19 +53,37 @@ jobs:
       DB_HOST: '127.0.0.1'
       DB_PORT: '13306'
       DB_BOOTSTRAP_ALLOW_HOST: '127.0.0.1'
+      EXPECTED_SCHEMA_VERSION: 001-initial
+      EXPECTED_SCHEMA_CHECKSUM: e28e282749f72504129f8aeb1c52f5de7d8ac79cdd7a9d2a125dcd4520581633
 
     steps:
       - name: Exigir ejecución manual autorizada
         env:
-          CONFIRM_PLAN: ${{ inputs.confirm_plan }}
+          BOOTSTRAP_OPERATION: ${{ inputs.operation }}
+          BOOTSTRAP_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
           test "${GITHUB_REF}" = 'refs/heads/main'
           test "${GITHUB_REPOSITORY}" = 'JarrisonLopez/sports-tournaments-api'
-          if [ "${CONFIRM_PLAN}" != 'PLAN' ]; then
-            echo 'Confirmación inválida: se requiere PLAN.' >&2
+          # BEGIN accept_confirmation
+          accept_confirmation() {
+            if [ "${DB_NAME}" != "sports_db" ]; then
+              return 1
+            fi
+            pair="${BOOTSTRAP_OPERATION}"$'\n'"${BOOTSTRAP_CONFIRMATION}"
+            case "${pair}" in
+              $'plan\nPLAN') return 0 ;;
+              $'apply\nAPPLY:sports_db') return 0 ;;
+              $'adopt\nADOPT:sports_db') return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+          # END accept_confirmation
+          if ! accept_confirmation; then
+            echo 'Confirmación inválida para la operación y la base autorizada.' >&2
             exit 1
           fi
+          echo "BOOTSTRAP_OPERATION=${BOOTSTRAP_OPERATION}" >> "${GITHUB_ENV}"
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -122,7 +150,20 @@ jobs:
           test "$(jq -er '.name' <<< "${db_json}")" = "${DB_NAME}"
           test "$(jq -er '.charset' <<< "${db_json}")" = 'utf8mb4'
           test "$(jq -er '.collation' <<< "${db_json}")" = 'utf8mb4_unicode_ci'
-          echo "DB_BOOTSTRAP_EXPECT_INSTANCE=${expected}" >> "${GITHUB_ENV}"
+          active="$(gcloud auth list --filter='status:ACTIVE' --format='value(account)' | tr -d '\r')"
+          if [ "${active}" != "${PROVISION_SA}" ]; then
+            echo 'La identidad activa no es la cuenta de aprovisionamiento.' >&2
+            exit 1
+          fi
+          backup_enabled="$(jq -r '.settings.backupConfiguration.enabled // "absent"' <<< "${instance_json}")"
+          binary_log="$(jq -r '.settings.backupConfiguration.binaryLogEnabled // "absent"' <<< "${instance_json}")"
+          case "${backup_enabled}" in true|false|absent) ;; *) backup_enabled="unrecognized" ;; esac
+          case "${binary_log}" in true|false|absent) ;; *) binary_log="unrecognized" ;; esac
+          {
+            echo "DB_BOOTSTRAP_EXPECT_INSTANCE=${expected}"
+            echo "BACKUP_ENABLED=${backup_enabled}"
+            echo "BINARY_LOG_ENABLED=${binary_log}"
+          } >> "${GITHUB_ENV}"
           echo 'Instancia, región, versión y base verificadas por metadatos.'
 
       - name: Node.js 22
@@ -151,12 +192,19 @@ jobs:
           test -x "${proxy_bin}"
           "${proxy_bin}" --version
 
-      - name: Conectar proxy temporal y ejecutar exclusivamente PLAN
+      - name: Conectar proxy temporal y ejecutar la operación autorizada
         env:
           TF_CONNECTION_NAME: ${{ steps.state.outputs.connection_name }}
         run: |
           set -euo pipefail
           expected="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
+          case "${BOOTSTRAP_OPERATION}" in
+            plan|apply|adopt) ;;
+            *)
+              echo 'Operación no autorizada.' >&2
+              exit 1
+              ;;
+          esac
           if [ -z "${DB_BOOTSTRAP_EXPECT_INSTANCE:-}" ] || \
              [ "${DB_BOOTSTRAP_EXPECT_INSTANCE}" != "${expected}" ] || \
              [ "${TF_CONNECTION_NAME}" != "${expected}" ]; then
@@ -233,37 +281,170 @@ jobs:
           echo "::add-mask::${DB_PASSWORD}"
           export DB_PASSWORD
 
-          set +e
-          plan_output="$(env -u CLOUD_SQL_CONNECTION_NAME -u DB_PASSWORD_FILE \
-            npm run schema:bootstrap -- plan 2>&1)"
-          plan_exit=$?
-          set -e
-          if grep -F -q -- "${DB_PASSWORD}" <<< "${plan_output}"; then
-            echo 'La salida del comando contiene material sensible.' >&2
-            exit 1
-          fi
-          if ! kill -0 "${proxy_pid}" 2>/dev/null; then
-            echo 'El Auth Proxy terminó durante la inspección.' >&2
-            exit 1
-          fi
-          if [ "${plan_exit}" -ne 0 ]; then
-            echo "La inspección falló (código ${plan_exit})." >&2
-            exit "${plan_exit}"
-          fi
-          declared="$(printf '%s\n' "${plan_output}" | sed -n 's/^instanciaEsperada=//p' | tail -n 1)"
-          action="$(printf '%s\n' "${plan_output}" | sed -n 's/^accion=//p' | tail -n 1)"
-          if [ "${declared}" != "${expected}" ]; then
-            echo 'El plan no declaró la instancia autorizada.' >&2
-            exit 1
-          fi
-          case "${action}" in
-            already-applied|adoption-required|apply)
-              echo "instanciaEsperada=${expected}"
-              echo "accion=${action}"
-              echo "### Esquema Cloud SQL: ${action}" >> "${GITHUB_STEP_SUMMARY}"
+          # BEGIN decide
+          decide() {
+            case "${BOOTSTRAP_OPERATION}" in
+              plan)
+                case "${ACTION}" in
+                  apply|adoption-required|already-applied) printf '%s\n' plan-ok ;;
+                  incompatible) printf '%s\n' plan-incompatible ;;
+                  *) printf '%s\n' invalid ;;
+                esac
+                ;;
+              apply)
+                case "${ACTION}" in
+                  apply) printf '%s\n' apply-authorized ;;
+                  *) printf '%s\n' apply-refused ;;
+                esac
+                ;;
+              adopt)
+                case "${ACTION}" in
+                  adoption-required) printf '%s\n' adopt-disabled ;;
+                  *) printf '%s\n' adopt-refused ;;
+                esac
+                ;;
+              *)
+                printf '%s\n' invalid
+                ;;
+            esac
+          }
+          # END decide
+
+          read_cli_result() {
+            if grep -F -q -- "${DB_PASSWORD}" <<< "${cli_output}"; then
+              echo 'La salida del comando contiene material sensible.' >&2
+              exit 1
+            fi
+            if ! kill -0 "${proxy_pid}" 2>/dev/null; then
+              echo 'El Auth Proxy terminó durante la inspección.' >&2
+              exit 1
+            fi
+            declared="$(printf '%s\n' "${cli_output}" | sed -n 's/^instanciaEsperada=//p')"
+            action="$(printf '%s\n' "${cli_output}" | sed -n 's/^accion=//p')"
+            declared_count="$(printf '%s\n' "${declared}" | grep -c . || true)"
+            action_count="$(printf '%s\n' "${action}" | grep -c . || true)"
+            if [ "${declared_count}" -ne 1 ] || [ "${action_count}" -ne 1 ]; then
+              echo "La inspección falló (código ${cli_exit})." >&2
+              exit 1
+            fi
+            if [ "${declared}" != "${expected}" ]; then
+              echo 'El comando no declaró la instancia autorizada.' >&2
+              exit 1
+            fi
+            case "${action}" in
+              apply|adoption-required|already-applied|incompatible) ;;
+              *)
+                echo 'La clasificación devuelta no está reconocida.' >&2
+                exit 1
+                ;;
+            esac
+            if [ "${action}" = "incompatible" ]; then
+              if [ "${cli_exit}" -eq 0 ]; then
+                echo 'Una clasificación incompatible no puede terminar en éxito.' >&2
+                exit 1
+              fi
+            elif [ "${cli_exit}" -ne 0 ]; then
+              echo "La inspección falló (código ${cli_exit})." >&2
+              exit 1
+            fi
+            ACTION="${action}"
+          }
+
+          publish() {
+            echo "instanciaEsperada=${expected}"
+            echo "accion=${ACTION}"
+            {
+              echo "### Esquema Cloud SQL"
+              echo ""
+              echo "- Operación solicitada: \`${BOOTSTRAP_OPERATION}\`"
+              echo "- Clasificación: \`${ACTION}\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          }
+
+          run_plan() {
+            set +e
+            cli_output="$(env -u CLOUD_SQL_CONNECTION_NAME -u DB_PASSWORD_FILE \
+              npm run schema:bootstrap -- plan 2>&1)"
+            cli_exit=$?
+            set -e
+            read_cli_result
+          }
+
+          run_plan
+          decision="$(decide)"
+          case "${decision}" in
+            plan-ok)
+              publish
+              ;;
+            plan-incompatible)
+              publish
+              exit 1
+              ;;
+            apply-refused|adopt-refused|invalid)
+              publish
+              echo 'La operación solicitada no está autorizada por la clasificación.' >&2
+              exit 1
+              ;;
+            adopt-disabled)
+              publish
+              case "${BACKUP_ENABLED:-}" in
+                true|false|absent|unrecognized) ;;
+                *)
+                  echo 'El estado de backup no es verificable.' >&2
+                  exit 1
+                  ;;
+              esac
+              case "${BINARY_LOG_ENABLED:-}" in
+                true|false|absent|unrecognized) ;;
+                *)
+                  echo 'El estado del binary log no es verificable.' >&2
+                  exit 1
+                  ;;
+              esac
+              echo "ADOPT está deshabilitado. BACKUP_ENABLED=${BACKUP_ENABLED} BINARY_LOG_ENABLED=${BINARY_LOG_ENABLED}. Esos indicadores no demuestran un respaldo restaurado y la confirmación de texto no autoriza la escritura." >&2
+              exit 1
+              ;;
+            apply-authorized)
+              if [ "${DB_NAME}" != "sports_db" ] || [ "${BOOTSTRAP_OPERATION}" != "apply" ]; then
+                echo 'La base o la operación no autorizan la escritura.' >&2
+                exit 1
+              fi
+              set +e
+              cli_output="$(env -u CLOUD_SQL_CONNECTION_NAME -u DB_PASSWORD_FILE \
+                npm run schema:bootstrap -- apply --confirm sports_db 2>&1)"
+              cli_exit=$?
+              set -e
+              if grep -F -q -- "${DB_PASSWORD}" <<< "${cli_output}"; then
+                echo 'La salida del comando contiene material sensible.' >&2
+                exit 1
+              fi
+              if [ "${cli_exit}" -ne 0 ]; then
+                echo 'La escritura no terminó. No se repara el esquema.' >&2
+                exit 1
+              fi
+              read_cli_result
+              if [ "${ACTION}" != "already-applied" ]; then
+                echo 'La escritura no dejó el esquema esperado. No se repara.' >&2
+                exit 1
+              fi
+              run_plan
+              if [ "${ACTION}" != "already-applied" ]; then
+                echo 'La verificación posterior no confirmó el esquema. No se repara.' >&2
+                exit 1
+              fi
+              # already-applied exige la versión y el checksum del módulo compilado.
+              # Esta comparación fija ese módulo al DDL revisado.
+              checksum="$(node -e "const schema=require('./dist/schema/canonical-schema.js'); if (schema.BOOTSTRAP_VERSION!==process.env.EXPECTED_SCHEMA_VERSION) process.exit(2); process.stdout.write(schema.applicationChecksum());")"
+              if [ "${checksum}" != "${EXPECTED_SCHEMA_CHECKSUM}" ]; then
+                echo 'El checksum compilado no coincide con el DDL esperado.' >&2
+                exit 1
+              fi
+              publish
+              echo "version=${EXPECTED_SCHEMA_VERSION}"
+              echo "checksum=${checksum}"
               ;;
             *)
-              echo 'PLAN no devolvió una clasificación reconocida.' >&2
+              echo 'La decisión de la operación no está reconocida.' >&2
               exit 1
               ;;
           esac
