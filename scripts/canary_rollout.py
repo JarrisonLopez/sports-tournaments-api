@@ -1,19 +1,30 @@
 #!/usr/bin/env python3
 """Decisiones locales del canary de sports-demo-api.
 
-No llama a gcloud, Cloud Monitoring ni Cloud SQL. Los comandos de despliegue
-se construyen como listas de argumentos para que un workflow autorizado los
-ejecute después. Un fallo de métricas no es cero errores y no promociona.
+No abre red. Construye los comandos de gcloud y Monitoring para que un
+workflow autorizado los ejecute después. Un fallo de consulta o una serie
+ausente no es cero errores y no promociona.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
+
+from cloud_monitoring import (
+    MIN_OBSERVATION_SECONDS,
+    REQUEST_COUNT,
+    REQUEST_LATENCIES,
+    aggregate_revision,
+    closed_window,
+    gcloud_monitoring_argv,
+    monitoring_filter as native_monitoring_filter,
+)
 
 # Umbrales de demostración académica. No son SLO calibrados en producción.
 DEMO_MIN_SAMPLES = 30
@@ -21,10 +32,16 @@ DEMO_MAX_ERROR_RATE = 0.05
 DEMO_MAX_ERROR_DELTA = 0.02
 DEMO_MAX_P95_MS = 1500.0
 DEMO_MAX_P95_RATIO = 2.0
-DEMO_OBSERVATION_SECONDS = 60
+DEMO_OBSERVATION_SECONDS = MIN_OBSERVATION_SECONDS
+DEMO_MAX_WAIT_SECONDS = 600
+DEMO_METRIC_RETRIES = 3
+MAX_DEMO_REQUESTS = 800
+MAX_DEMO_CONCURRENCY = 4
+MAX_DEMO_DURATION_SECONDS = 240
 
 TRAFFIC_STEPS = ((100, 0), (90, 10), (50, 50), (0, 100))
-SHARED_PATH = "/api/v2/torneos/1"
+PROMOTION_TRANSITIONS = ((0, 10), (10, 50), (50, 100))
+SHARED_PATH = "/api/v2/torneos"
 CANARY_ONLY_PREFIX = "/api/v4/"
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 REVISION = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
@@ -199,24 +216,22 @@ def shared_probe_path(path: str) -> str:
     return path
 
 
-def monitoring_filter(project_id: str, revision: str) -> str:
+def monitoring_filter(project_id: str, revision: str, region: str = "us-central1") -> str:
     require_revision(revision, "medida")
     if not re.fullmatch(r"[a-z][a-z0-9-]{4,28}[a-z0-9]", project_id):
         raise ValueError("project_id no tiene forma de proyecto de GCP")
-    # Métricas nativas de Cloud Run. No hay exportador OTEL activo:
-    # otel_exporter_otlp_endpoint está vacío y estas series no salen del código.
-    return (
-        'resource.type="cloud_run_revision" '
-        f'AND resource.labels.project_id="{project_id}" '
-        'AND resource.labels.service_name="sports-demo-api" '
-        f'AND resource.labels.revision_name="{revision}" '
-        'AND metric.type="run.googleapis.com/request_count"'
+    # Métricas nativas de Cloud Run. No hay exportador OTEL activo.
+    return native_monitoring_filter(
+        project_id=project_id,
+        region=region,
+        revision=revision,
+        metric_type=REQUEST_COUNT,
     )
 
 
 def normalize_metrics(payload: Mapping[str, Any]) -> dict[str, Any]:
     status = str(payload.get("query_status", ""))
-    if status not in {"ok", "error", "insufficient"}:
+    if status not in {"ok", "error", "insufficient", "no_traffic", "not_published"}:
         return {"query_status": "error", "reason": "respuesta de Monitoring no reconocida"}
     if status != "ok":
         return {"query_status": status, "reason": str(payload.get("reason", status))}
@@ -241,23 +256,56 @@ def normalize_metrics(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _observability_gap(
+    reason: str,
+    *,
+    canary_percent: int,
+    waited_seconds: int,
+    max_wait_seconds: int,
+) -> GateResult:
+    if canary_percent > 0 and waited_seconds >= max_wait_seconds:
+        return GateResult(
+            "abort",
+            "falta de observabilidad, no es una regresión comprobada; se restaura stable",
+        )
+    return GateResult("pause", reason)
+
+
 def quality_gate(
     canary: Mapping[str, Any],
     stable: Mapping[str, Any],
     *,
     smoke_status: int | None = 200,
     fault_regression: bool = False,
+    observation_seconds: int = DEMO_OBSERVATION_SECONDS,
+    canary_percent: int = 0,
+    waited_seconds: int = 0,
+    max_wait_seconds: int = DEMO_MAX_WAIT_SECONDS,
 ) -> GateResult:
     if fault_regression:
         return GateResult("abort", "regresión provocada por fault injection")
-    if smoke_status is None or smoke_status >= 500 or smoke_status < 100:
+    if smoke_status is None or smoke_status in {401, 403} or smoke_status >= 500 or smoke_status < 200:
         return GateResult("abort", "smoke test fallido")
+    if observation_seconds < MIN_OBSERVATION_SECONDS:
+        return _observability_gap(
+            "una ventana de 60 s no cubre el muestreo ni el retraso de publicación",
+            canary_percent=canary_percent,
+            waited_seconds=waited_seconds,
+            max_wait_seconds=max_wait_seconds,
+        )
     current = normalize_metrics(canary)
     baseline = normalize_metrics(stable)
-    if current["query_status"] == "error" or baseline["query_status"] == "error":
-        return GateResult("pause", "consulta de Monitoring fallida; no se interpreta como cero errores")
-    if current["query_status"] != "ok" or baseline["query_status"] != "ok":
-        return GateResult("pause", "datos insuficientes; no se promociona por ausencia de métricas")
+    unreliable = {"error", "insufficient", "no_traffic", "not_published"}
+    if current["query_status"] in unreliable or baseline["query_status"] in unreliable:
+        reason = "consulta de Monitoring fallida; no se interpreta como cero errores"
+        if current["query_status"] != "error" and baseline["query_status"] != "error":
+            reason = "datos insuficientes o todavía no publicados; no se promociona"
+        return _observability_gap(
+            reason,
+            canary_percent=canary_percent,
+            waited_seconds=waited_seconds,
+            max_wait_seconds=max_wait_seconds,
+        )
     error_rate = float(current["error_rate"])
     baseline_rate = float(baseline["error_rate"])
     if error_rate > DEMO_MAX_ERROR_RATE or error_rate > baseline_rate + DEMO_MAX_ERROR_DELTA:
@@ -265,7 +313,12 @@ def quality_gate(
     p95 = current.get("p95_ms")
     baseline_p95 = baseline.get("p95_ms")
     if not isinstance(p95, (int, float)) or not isinstance(baseline_p95, (int, float)):
-        return GateResult("pause", "latencia ausente; no se promociona")
+        return _observability_gap(
+            "latencia ausente; no se promociona",
+            canary_percent=canary_percent,
+            waited_seconds=waited_seconds,
+            max_wait_seconds=max_wait_seconds,
+        )
     if float(p95) > DEMO_MAX_P95_MS or float(p95) > float(baseline_p95) * DEMO_MAX_P95_RATIO:
         return GateResult("abort", "latencia p95 sobre el umbral de demostración")
     return GateResult("continue", "métricas dentro de los umbrales de demostración")
@@ -349,6 +402,289 @@ def gcloud_traffic_argv(
     ]
 
 
+def load_plan(canary_percent: int, *, min_samples: int = DEMO_MIN_SAMPLES) -> dict[str, object]:
+    """Calcula solicitudes a la URL principal. No las envía.
+
+    Al 10 %, 30 solicitudes totales no son 30 muestras de Canary. El plan pide
+    suficientes solicitudes para que la porción menor pueda alcanzar el mínimo,
+    y las muestras reales se leen después en Monitoring.
+    """
+    if canary_percent not in {10, 50, 100}:
+        raise ValueError("la carga de comparación usa canary al 10, 50 o 100")
+    if canary_percent == 100:
+        requests = min_samples
+        limited_share = 100
+    else:
+        limited_share = min(canary_percent, 100 - canary_percent)
+        requests = math.ceil(min_samples / (limited_share / 100) * 1.5)
+    if requests > MAX_DEMO_REQUESTS:
+        raise ValueError("la carga supera el tope de 800 solicitudes de la demostración")
+    return {
+        "path": SHARED_PATH,
+        "via": "service-url",
+        "requests": requests,
+        "concurrency": MAX_DEMO_CONCURRENCY,
+        "duration_seconds": MAX_DEMO_DURATION_SECONDS,
+        "retries": 1,
+        "estimated_share_percent": limited_share,
+        "samples_are_measured_by_monitoring": True,
+        "sent_requests_are_not_revision_samples": True,
+    }
+
+
+def assert_transition(current_canary_percent: int, target_canary_percent: int) -> None:
+    if (current_canary_percent, target_canary_percent) not in PROMOTION_TRANSITIONS:
+        raise ValueError("la promoción no puede saltar etapas ni retroceder por este camino")
+
+
+def promotion_decision(
+    *,
+    current_canary_percent: int,
+    target_canary_percent: int,
+    smoke_ok: bool,
+    connector_preflight: str,
+    canary_metrics: Mapping[str, Any] | None = None,
+    stable_metrics: Mapping[str, Any] | None = None,
+    observation_seconds: int = DEMO_OBSERVATION_SECONDS,
+    waited_seconds: int = 0,
+) -> GateResult:
+    assert_transition(current_canary_percent, target_canary_percent)
+    if connector_preflight != "tables-ok":
+        return GateResult("pause", "el preflight del conector todavía no comprobó las tablas de negocio")
+    if current_canary_percent == 0:
+        if not smoke_ok:
+            return GateResult("abort", "no se admite tráfico a canary sin smoke test satisfactorio")
+        return GateResult(
+            "continue",
+            "el 10% inicial se admite por smoke; la ausencia de muestras todavía no es éxito",
+        )
+    if canary_metrics is None or stable_metrics is None:
+        return _observability_gap(
+            "faltan las métricas de la etapa actual",
+            canary_percent=current_canary_percent,
+            waited_seconds=waited_seconds,
+            max_wait_seconds=DEMO_MAX_WAIT_SECONDS,
+        )
+    return quality_gate(
+        canary_metrics,
+        stable_metrics,
+        observation_seconds=observation_seconds,
+        canary_percent=current_canary_percent,
+        waited_seconds=waited_seconds,
+    )
+
+
+def observed_traffic(service: Mapping[str, Any]) -> list[dict[str, object]]:
+    status = service.get("status")
+    source = status if isinstance(status, Mapping) else service
+    traffic = source.get("traffic", [])
+    if not isinstance(traffic, list):
+        raise ValueError("el servicio no trae tráfico")
+    observed: list[dict[str, object]] = []
+    for item in traffic:
+        if not isinstance(item, Mapping) or "percent" not in item:
+            continue
+        revision = str(item.get("revision") or item.get("revisionName") or "")
+        observed.append(
+            {
+                "revision": revision,
+                "percent": int(item["percent"]),
+                "tag": str(item.get("tag", "")),
+            }
+        )
+    return observed
+
+
+def revision_ready(revision: Mapping[str, Any]) -> bool:
+    if revision.get("ready") is True:
+        return True
+    conditions = revision.get("conditions", [])
+    if not isinstance(conditions, list):
+        return False
+    return any(
+        isinstance(item, Mapping)
+        and item.get("type") == "Ready"
+        and item.get("state") in {"CONDITION_SUCCEEDED", "True"}
+        for item in conditions
+    )
+
+
+def assert_revisions_ready(
+    service: Mapping[str, Any],
+    stable_revision: str,
+    canary_revision: str,
+) -> None:
+    stable_revision = require_revision(stable_revision, "stable")
+    canary_revision = require_revision(canary_revision, "canary")
+    revisions = service.get("revisions", [])
+    if not isinstance(revisions, list):
+        raise ValueError("el estado no trae revisiones")
+    ready = {
+        str(item.get("name") or item.get("metadata", {}).get("name"))
+        for item in revisions
+        if isinstance(item, Mapping) and revision_ready(item)
+    }
+    if stable_revision not in ready or canary_revision not in ready:
+        raise ValueError("una revisión no existe o no está lista; no se cambia el tráfico")
+
+
+def service_urls(service: Mapping[str, Any]) -> dict[str, str]:
+    status = service.get("status") if isinstance(service.get("status"), Mapping) else service
+    main = str(status.get("url", ""))
+    if not main.startswith("https://"):
+        raise ValueError("falta la URL principal del servicio")
+    tagged: dict[str, str] = {}
+    for item in observed_traffic(service):
+        tag = str(item["tag"])
+        url = ""
+        for raw in status.get("traffic", []):
+            if isinstance(raw, Mapping) and str(raw.get("tag", "")) == tag:
+                url = str(raw.get("url", ""))
+        if tag and url.startswith("https://"):
+            tagged[tag] = url
+    return {"service": main, **tagged}
+
+
+def monitor_commands(
+    *,
+    project_id: str,
+    region: str,
+    revision: str,
+    seconds: int,
+) -> list[list[str]]:
+    chosen = closed_window(seconds)
+    return [
+        gcloud_monitoring_argv(
+            project_id=project_id,
+            region=region,
+            revision=revision,
+            metric_type=metric,
+            window=chosen,
+        )
+        for metric in (REQUEST_COUNT, REQUEST_LATENCIES)
+    ]
+
+
+def parse_monitoring_response(
+    payload: Mapping[str, Any] | list[Any],
+    *,
+    project_id: str,
+    region: str,
+    revision: str,
+    seconds: int,
+) -> dict[str, Any]:
+    queried = closed_window(seconds)
+    body: Mapping[str, Any] | list[Any]
+    if isinstance(payload, list):
+        body = {"timeSeries": payload}
+    else:
+        body = payload
+    return aggregate_revision(
+        body,
+        project_id=project_id,
+        region=region,
+        revision=revision,
+        window=queried,
+        min_samples=DEMO_MIN_SAMPLES,
+    )
+
+
+def assert_deployed_revision(revision: Mapping[str, Any], *, digest: str, track: str) -> str:
+    metadata = revision.get("metadata")
+    name = ""
+    if isinstance(metadata, Mapping):
+        name = str(metadata.get("name", ""))
+    name = require_revision(name or str(revision.get("name", "")), track)
+    spec = revision.get("spec") if isinstance(revision.get("spec"), Mapping) else {}
+    containers = spec.get("containers") or revision.get("containers") or []
+    image = ""
+    if isinstance(containers, list) and containers and isinstance(containers[0], Mapping):
+        image = str(containers[0].get("image", ""))
+    if image != parse_digest(digest, track):
+        raise ValueError("la revisión creada no usa el digest pedido")
+    if not revision_ready(revision):
+        raise ValueError("la revisión creada no está lista")
+    return name
+
+
+def gcloud_pin_argv(
+    *,
+    project_id: str,
+    region: str,
+    service: str,
+    revision: str,
+) -> list[str]:
+    if service != "sports-demo-api":
+        raise ValueError("el canary vive en el servicio único sports-demo-api")
+    revision = require_revision(revision, "stable")
+    return [
+        "gcloud",
+        "run",
+        "services",
+        "update-traffic",
+        service,
+        f"--project={project_id}",
+        f"--region={region}",
+        f"--to-revisions={revision}=100",
+    ]
+
+
+def prepare_service(
+    describe_payload: Mapping[str, Any],
+    revisions: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    if not isinstance(revisions, Sequence) or isinstance(revisions, (str, bytes)):
+        raise ValueError("la lista de revisiones no es válida")
+    packed = dict(describe_payload)
+    packed["revisions"] = list(revisions)
+    return packed
+
+
+def current_canary_percent(service: Mapping[str, Any], canary_revision: str) -> int:
+    canary_revision = require_revision(canary_revision, "canary")
+    for item in observed_traffic(service):
+        if item["revision"] == canary_revision:
+            return int(item["percent"])
+    return 0
+
+
+def execute_traffic(argv: Sequence[str], runner: Any) -> bool:
+    if "update-traffic" not in argv:
+        raise ValueError("solo se ejecuta un cambio de tráfico explícito")
+    return int(runner(list(argv))) == 0
+
+
+def assert_stable_pin(service: Mapping[str, Any], revision: str) -> None:
+    revision = require_revision(revision, "stable")
+    observed = [item for item in observed_traffic(service) if int(item["percent"]) > 0]
+    if len(observed) != 1 or observed[0]["revision"] != revision or int(observed[0]["percent"]) != 100:
+        raise ValueError("stable no quedó con el 100 por ciento en la revisión pedida")
+
+
+def created_revision_name(deploy_response: Mapping[str, Any]) -> str:
+    status = deploy_response.get("status")
+    source = status if isinstance(status, Mapping) else deploy_response
+    return require_revision(str(source.get("latestCreatedRevisionName", "")), "creada")
+
+
+def assert_observed_split(
+    service: Mapping[str, Any],
+    *,
+    stable_revision: str,
+    canary_revision: str,
+    stable_percent: int,
+    canary_percent: int,
+) -> None:
+    assert_revisions_ready(service, stable_revision, canary_revision)
+    verify_split(
+        observed_traffic(service),
+        stable_revision,
+        canary_revision,
+        stable_percent,
+        canary_percent,
+    )
+
+
 def decide_and_exit(result: GateResult) -> int:
     print(f"decision={result.decision}")
     print(f"motivo={result.reason}")
@@ -379,6 +715,68 @@ def main(argv: Sequence[str]) -> int:
     gate.add_argument("--stable-metrics", required=True)
     gate.add_argument("--smoke-status", type=int, default=200)
     gate.add_argument("--fault-regression", action="store_true")
+    gate.add_argument("--observation-seconds", type=int, default=DEMO_OBSERVATION_SECONDS)
+    gate.add_argument("--canary-percent", type=int, default=0)
+    gate.add_argument("--waited-seconds", type=int, default=0)
+
+    monitor = sub.add_parser("monitor-argv")
+    monitor.add_argument("--project", required=True)
+    monitor.add_argument("--region", required=True)
+    monitor.add_argument("--revision", required=True)
+    monitor.add_argument("--seconds", type=int, required=True)
+
+    parsed = sub.add_parser("parse-monitoring")
+    parsed.add_argument("--raw", required=True)
+    parsed.add_argument("--project", required=True)
+    parsed.add_argument("--region", required=True)
+    parsed.add_argument("--revision", required=True)
+    parsed.add_argument("--seconds", type=int, required=True)
+
+    load = sub.add_parser("load-plan")
+    load.add_argument("--canary-percent", type=int, required=True)
+
+    promote = sub.add_parser("promote-decision")
+    promote.add_argument("--current-canary", type=int, required=True)
+    promote.add_argument("--target-canary", type=int, required=True)
+    promote.add_argument("--connector-preflight", default="pending")
+    promote.add_argument("--smoke-ok", action="store_true")
+    promote.add_argument("--canary-metrics")
+    promote.add_argument("--stable-metrics")
+    promote.add_argument("--observation-seconds", type=int, default=DEMO_OBSERVATION_SECONDS)
+    promote.add_argument("--waited-seconds", type=int, default=0)
+
+    check_revision = sub.add_parser("assert-revision")
+    check_revision.add_argument("--file", required=True)
+    check_revision.add_argument("--digest", required=True)
+    check_revision.add_argument("--track", required=True, choices=("stable", "canary"))
+
+    check_split = sub.add_parser("assert-split")
+    check_split.add_argument("--service", required=True)
+    check_split.add_argument("--stable-revision", required=True)
+    check_split.add_argument("--canary-revision", required=True)
+    check_split.add_argument("--stable-percent", type=int, required=True)
+    check_split.add_argument("--canary-percent", type=int, required=True)
+
+    pin = sub.add_parser("pin-argv")
+    pin.add_argument("--project", required=True)
+    pin.add_argument("--region", required=True)
+    pin.add_argument("--revision", required=True)
+
+    pack = sub.add_parser("prepare-service")
+    pack.add_argument("--describe", required=True)
+    pack.add_argument("--revisions", required=True)
+    pack.add_argument("--out", required=True)
+
+    created = sub.add_parser("created-revision")
+    created.add_argument("--file", required=True)
+
+    current = sub.add_parser("current-canary")
+    current.add_argument("--service", required=True)
+    current.add_argument("--canary-revision", required=True)
+
+    pin_check = sub.add_parser("assert-pin")
+    pin_check.add_argument("--service", required=True)
+    pin_check.add_argument("--revision", required=True)
 
     traffic = sub.add_parser("traffic-argv")
     traffic.add_argument("--project", required=True)
@@ -428,8 +826,92 @@ def main(argv: Sequence[str]) -> int:
                     stable,
                     smoke_status=args.smoke_status,
                     fault_regression=args.fault_regression,
+                    observation_seconds=args.observation_seconds,
+                    canary_percent=args.canary_percent,
+                    waited_seconds=args.waited_seconds,
                 )
             )
+        if args.command == "monitor-argv":
+            print(json.dumps(monitor_commands(
+                project_id=args.project,
+                region=args.region,
+                revision=args.revision,
+                seconds=args.seconds,
+            )))
+            return 0
+        if args.command == "parse-monitoring":
+            raw = json.loads(open(args.raw, encoding="utf-8").read())
+            print(json.dumps(parse_monitoring_response(
+                raw,
+                project_id=args.project,
+                region=args.region,
+                revision=args.revision,
+                seconds=args.seconds,
+            )))
+            return 0
+        if args.command == "load-plan":
+            print(json.dumps(load_plan(args.canary_percent)))
+            return 0
+        if args.command == "promote-decision":
+            canary_metrics = None
+            stable_metrics = None
+            if args.canary_metrics:
+                canary_metrics = json.loads(open(args.canary_metrics, encoding="utf-8").read())
+            if args.stable_metrics:
+                stable_metrics = json.loads(open(args.stable_metrics, encoding="utf-8").read())
+            return decide_and_exit(promotion_decision(
+                current_canary_percent=args.current_canary,
+                target_canary_percent=args.target_canary,
+                smoke_ok=args.smoke_ok,
+                connector_preflight=args.connector_preflight,
+                canary_metrics=canary_metrics,
+                stable_metrics=stable_metrics,
+                observation_seconds=args.observation_seconds,
+                waited_seconds=args.waited_seconds,
+            ))
+        if args.command == "assert-revision":
+            revision = json.loads(open(args.file, encoding="utf-8").read())
+            print(assert_deployed_revision(revision, digest=args.digest, track=args.track))
+            return 0
+        if args.command == "assert-split":
+            service = json.loads(open(args.service, encoding="utf-8").read())
+            assert_observed_split(
+                service,
+                stable_revision=args.stable_revision,
+                canary_revision=args.canary_revision,
+                stable_percent=args.stable_percent,
+                canary_percent=args.canary_percent,
+            )
+            print("traffic=verified")
+            return 0
+        if args.command == "pin-argv":
+            print(json.dumps(gcloud_pin_argv(
+                project_id=args.project,
+                region=args.region,
+                service="sports-demo-api",
+                revision=args.revision,
+            )))
+            return 0
+        if args.command == "prepare-service":
+            describe_payload = json.loads(open(args.describe, encoding="utf-8").read())
+            revisions = json.loads(open(args.revisions, encoding="utf-8").read())
+            packed = prepare_service(describe_payload, revisions)
+            open(args.out, "w", encoding="utf-8").write(json.dumps(packed))
+            print("service=packed")
+            return 0
+        if args.command == "created-revision":
+            payload = json.loads(open(args.file, encoding="utf-8").read())
+            print(created_revision_name(payload))
+            return 0
+        if args.command == "current-canary":
+            service = json.loads(open(args.service, encoding="utf-8").read())
+            print(current_canary_percent(service, args.canary_revision))
+            return 0
+        if args.command == "assert-pin":
+            service = json.loads(open(args.service, encoding="utf-8").read())
+            assert_stable_pin(service, args.revision)
+            print("pin=verified")
+            return 0
         if args.command == "traffic-argv":
             command = gcloud_traffic_argv(
                 project_id=args.project,
