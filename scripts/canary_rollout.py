@@ -595,14 +595,15 @@ def service_urls(service: Mapping[str, Any]) -> dict[str, str]:
     if not main.startswith("https://"):
         raise ValueError("falta la URL principal del servicio")
     tagged: dict[str, str] = {}
-    for item in observed_traffic(service):
-        tag = str(item["tag"])
-        url = ""
-        for raw in status.get("traffic", []):
-            if isinstance(raw, Mapping) and str(raw.get("tag", "")) == tag:
-                url = str(raw.get("url", ""))
-        if tag and url.startswith("https://"):
-            tagged[tag] = url
+    traffic = status.get("traffic", [])
+    if isinstance(traffic, list):
+        for raw in traffic:
+            if not isinstance(raw, Mapping):
+                continue
+            tag = str(raw.get("tag", ""))
+            url = str(raw.get("url", ""))
+            if tag and url.startswith("https://"):
+                tagged[tag] = url
     return {"service": main, **tagged}
 
 
