@@ -19,6 +19,7 @@ from canary_rollout import (  # noqa: E402
     gcloud_deploy_argv,
     gcloud_traffic_argv,
     revision_wait_state,
+    service_urls,
     monitoring_filter,
     normalize_metrics,
     parse_digest,
@@ -255,6 +256,26 @@ class CanaryRolloutTests(unittest.TestCase):
         self.assertEqual(workflow.count("token_format: id_token"), 1)
         self.assertIn("create_credentials_file: false", workflow)
         self.assertNotIn("print-identity-token", shell)
+        urls = service_urls({
+            "status": {
+                "url": "https://sports-demo-api-example.a.run.app",
+                "traffic": [
+                    {
+                        "revisionName": "sports-demo-api-00001-paj",
+                        "percent": 100,
+                        "tag": "stable",
+                        "url": "https://stable---sports-demo-api-example.a.run.app",
+                    },
+                    {
+                        "revisionName": "sports-demo-api-00003-pal",
+                        "tag": "canary",
+                        "url": "https://canary---sports-demo-api-example.a.run.app",
+                    },
+                ],
+            }
+        })
+        self.assertIn("canary", urls)
+        self.assertNotEqual(urls["service"], urls["canary"])
 
     def test_monitoring_filter_uses_native_metric(self) -> None:
         text = monitoring_filter(
