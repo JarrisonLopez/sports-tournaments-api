@@ -150,6 +150,8 @@ module "sports_api" {
       CLOUD_SQL_CONNECTION_NAME = module.cloud_sql.connection_name
       DB_USER                   = var.database_user
       DB_NAME                   = var.database_name
+      API_VERSION               = "3.0.2"
+      API_TRACK                 = "stable"
       OBJECT_STORAGE_API_URL    = coalesce(one(module.object_storage_service[*].uri), "")
     },
     local.sports_integration_env,
@@ -163,7 +165,10 @@ module "sports_api" {
     },
   ]
 
-  cloud_sql_instances = [module.cloud_sql.connection_name]
+  # Sin volumen /cloudsql. El conector de Node abre TLS; el socket Unix
+  # del Auth Proxy no está soportado con caching_sha2_password en MySQL 8.4.
+  cloud_sql_instances = []
+  service_traffic_tag = "stable"
 
   depends_on = [module.project_services, module.iam]
 }
