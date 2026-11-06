@@ -129,7 +129,7 @@ Parar si falta un permiso, el plan no es el esperado, el preflight no muestra la
 4. Anotar el nombre de la revisión Stable. No usar `latest`.
 5. Dispatch `deploy-canary`, confirmación `DEPLOY-CANARY`, los dos digests. Smoke de `GET /api/v2/torneos` y `GET /api/v4/torneos/estadisticas` contra la URL etiquetada, con audiencia de la URL principal. Canary queda en 0%.
 6. Enviar la carga a la URL principal, no a un torneo con id 1. Al 10% el plan local pide 450 solicitudes, con tope 800, concurrencia 4 y 240 segundos. Las muestras se leen después por revisión.
-7. Dispatch `promote`, confirmación `PROMOTE`, `split` `90/10`, luego `50/50` y `0/100`. `timing` mínimo `180,0`. Entre etapas el job consulta `request_count` y `request_latencies`. Si la decisión no es `continue`, no avanza. Si es `abort`, devuelve 100% a la revisión Stable y comprueba el resultado.
+7. Dispatch `promote`, confirmación `PROMOTE`, `split` `90/10` y después `0/100`. No hay etapa `50/50`. `timing` mínimo `180,0`. El `0/100` consulta `request_count` y `request_latencies` y solo avanza si el quality gate devuelve `continue`. Si es `abort`, devuelve 100% a la revisión Stable y comprueba el resultado.
 8. `rollback` con confirmación `ROLLBACK` repite esa restauración si hace falta. No borra revisiones.
 9. No correr `entrega3-gcp.yml` mientras el reparto exista. Su validador rechaza un update de `sports-demo-api`.
 
@@ -166,4 +166,4 @@ python scripts/tests/test_canary_scenarios.py
 python scripts/tests/test_validate_entrega3_deploy_plan.py
 ```
 
-Esas pruebas no llaman a GCP. La promoción simulada recorre 100/0, 90/10, 50/50 y 0/100. La regresión simulada devuelve el tráfico a Stable. El primer recorrido real sigue siendo el dispatch descrito arriba.
+Esas pruebas no llaman a GCP. La promoción simulada recorre 100/0, 90/10 y 0/100. No incluye 50/50. La regresión simulada devuelve el tráfico a Stable. El primer recorrido real sigue siendo el dispatch descrito arriba.
