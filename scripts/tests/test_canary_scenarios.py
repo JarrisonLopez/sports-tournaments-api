@@ -21,6 +21,7 @@ from canary_rollout import (  # noqa: E402
     promotion_decision,
     quality_gate,
     rollback_targets,
+    traffic_step,
     verify_split,
 )
 from run_json_argv import reject_image_latest  # noqa: E402
@@ -62,7 +63,7 @@ class ScenarioTests(unittest.TestCase):
         self.assertTrue(plan["samples_are_measured_by_monitoring"])
         state = (100, 0)
         applied: list[tuple[int, int]] = [state]
-        for stable_percent, canary_percent in ((90, 10), (50, 50), (0, 100)):
+        for stable_percent, canary_percent in ((90, 10), (0, 100)):
             current = state[1]
             metrics = None if current == 0 else measured()
             decision = promotion_decision(
@@ -87,12 +88,47 @@ class ScenarioTests(unittest.TestCase):
             verify_split(observed(stable_percent, canary_percent), STABLE, CANARY, stable_percent, canary_percent)
             state = (stable_percent, canary_percent)
             applied.append(state)
-        self.assertEqual(applied, [(100, 0), (90, 10), (50, 50), (0, 100)])
+        self.assertEqual(applied, [(100, 0), (90, 10), (0, 100)])
+
+    def test_fifty_percent_is_not_an_automatic_step(self) -> None:
+        with self.assertRaises(ValueError):
+            traffic_step(50, 50)
+        with self.assertRaises(ValueError):
+            promotion_decision(
+                current_canary_percent=10,
+                target_canary_percent=50,
+                smoke_ok=True,
+                connector_preflight="tables-ok",
+                canary_metrics=measured(),
+                stable_metrics=measured(),
+            )
+
+    def test_recorded_latency_ratio_still_aborts(self) -> None:
+        decision = quality_gate(
+            {
+                "query_status": "ok",
+                "samples": 51,
+                "requests": 51,
+                "errors_5xx": 0,
+                "error_rate": 0.0,
+                "p95_ms": 52.8,
+            },
+            {
+                "query_status": "ok",
+                "samples": 399,
+                "requests": 399,
+                "errors_5xx": 0,
+                "error_rate": 0.0,
+                "p95_ms": 14.2,
+            },
+            canary_percent=10,
+        )
+        self.assertEqual(decision.decision, "abort")
 
     def test_regression_rolls_back_to_named_stable(self) -> None:
         decision = promotion_decision(
             current_canary_percent=10,
-            target_canary_percent=50,
+            target_canary_percent=100,
             smoke_ok=True,
             connector_preflight="tables-ok",
             canary_metrics=measured(errors=10),

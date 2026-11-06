@@ -50,7 +50,7 @@ on:
         type: string
         default: ''
       split:
-        description: 'Reparto stable/canary: 100/0, 90/10, 50/50 o 0/100.'
+        description: 'Reparto stable/canary: 100/0, 90/10 o 0/100. El 0/100 solo avanza si el quality gate devuelve continue.'
         required: false
         type: string
         default: '100/0'

@@ -39,8 +39,8 @@ MAX_DEMO_REQUESTS = 800
 MAX_DEMO_CONCURRENCY = 4
 MAX_DEMO_DURATION_SECONDS = 240
 
-TRAFFIC_STEPS = ((100, 0), (90, 10), (50, 50), (0, 100))
-PROMOTION_TRANSITIONS = ((0, 10), (10, 50), (50, 100))
+TRAFFIC_STEPS = ((100, 0), (90, 10), (0, 100))
+PROMOTION_TRANSITIONS = ((0, 10), (10, 100))
 SHARED_PATH = "/api/v2/torneos"
 CANARY_ONLY_PREFIX = "/api/v4/"
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -160,7 +160,7 @@ def parse_bootstrap_output(text: str) -> str:
 def traffic_step(stable_percent: int, canary_percent: int) -> None:
     pair = (stable_percent, canary_percent)
     if pair not in TRAFFIC_STEPS:
-        raise ValueError("el reparto debe ser 100/0, 90/10, 50/50 o 0/100")
+        raise ValueError("el reparto debe ser 100/0, 90/10 o 0/100")
     if stable_percent + canary_percent != 100:
         raise ValueError("los porcentajes deben sumar 100")
 
