@@ -1,6 +1,8 @@
 import { shutdownTracing } from "./instrumentation";
 import { buildApp } from "./app";
 import { AppDataSource } from "./config/database";
+import { StartupSchemaError } from "./schema/startup-schema";
+import { bootCanary } from "./startup";
 
 const app = buildApp();
 
@@ -8,21 +10,37 @@ let shutdownPromise: Promise<void> | undefined;
 
 const start = async () => {
   try {
-    await AppDataSource.initialize();
-
-    app.log.info("Base de datos conectada");
-
-    await app.listen({
-      port: Number(process.env.PORT) || 3000,
-      host: "0.0.0.0",
+    await bootCanary(AppDataSource, async () => {
+      app.log.info("Base de datos conectada");
+      await app.listen({
+        port: Number(process.env.PORT) || 3000,
+        host: "0.0.0.0",
+      });
     });
 
     registerShutdownSignals();
   } catch (error) {
-    app.log.error(error);
+    app.log.error(error instanceof StartupSchemaError ? error.message : error);
+    await releaseStartupResources();
     process.exit(1);
   }
 };
+
+async function releaseStartupResources(): Promise<void> {
+  try {
+    await app.close();
+  } catch {
+    // El servidor todavía no escuchaba.
+  }
+
+  if (AppDataSource.isInitialized) {
+    try {
+      await AppDataSource.destroy();
+    } catch {
+      // La conexión ya se estaba cerrando.
+    }
+  }
+}
 
 function registerShutdownSignals(): void {
   process.on("SIGTERM", () => {

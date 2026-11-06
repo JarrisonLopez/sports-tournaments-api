@@ -29,6 +29,9 @@ export const AppDataSource = new DataSource({
 
   entities: [Torneo, Cancha, Jugador],
 
-  synchronize: true,
+  // Literales fijos. Ninguna variable de entorno habilita estos modos.
+  synchronize: false,
+  migrationsRun: false,
+  dropSchema: false,
   logging: false,
 });

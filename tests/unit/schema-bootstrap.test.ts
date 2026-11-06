@@ -204,7 +204,7 @@ describe("bootstrap de esquema", () => {
   it("el índice versionado es el que emitió TypeORM y el runtime no cambia", () => {
     expect(APPLICATION_DDL[1]).toContain(DOCUMENTO_UNIQUE_INDEX);
     expect(APPLICATION_DDL.join("\n")).not.toMatch(/drop|truncate|alter/i);
-    expect(readFileSync("src/config/database.ts", "utf8")).toContain("synchronize: true");
+    expect(readFileSync("src/config/database.ts", "utf8")).toContain("synchronize: false");
     expect(readFileSync("src/index.ts", "utf8")).not.toContain("schema/bootstrap");
     expect(classifySnapshot(appliedSnapshot()).statements).toEqual([]);
   });
