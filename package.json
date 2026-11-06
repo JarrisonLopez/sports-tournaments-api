@@ -32,10 +32,16 @@
     "@opentelemetry/sdk-node": "^0.222.0",
     "@opentelemetry/sdk-trace-base": "^2.11.0",
     "dotenv": "^17.4.2",
-    "fastify": "^5.12.1",
+    "fastify": "5.12.8",
     "google-auth-library": "^9.15.1",
     "mysql2": "^3.24.2",
     "reflect-metadata": "^0.2.2",
     "typeorm": "^1.1.0"
+  },
+  "overrides": {
+    "fast-uri": "4.2.3",
+    "ajv": {
+      "fast-uri": "3.1.9"
+    }
   }
 }
