@@ -21,6 +21,7 @@ import {
   BootstrapPartialError,
   BootstrapRejectedError,
   classifySnapshot,
+  clearDeploymentWithoutHistory,
   planBootstrap,
   redactSecrets,
   targetFromEnv,
@@ -122,6 +123,20 @@ describe("bootstrap de esquema", () => {
     expect(classifySnapshot(snapshot({ tables: [] })).action).toBe("apply");
     expect(classifySnapshot(appliedSnapshot()).action).toBe("already-applied");
     expect(classifySnapshot(appSnapshot()).action).toBe("adoption-required");
+    const compatible = classifySnapshot(appSnapshot());
+    expect(clearDeploymentWithoutHistory(compatible, "")).toBe("blocked");
+    expect(clearDeploymentWithoutHistory(compatible, "ADOPT:sports_db")).toBe("blocked");
+    expect(
+      clearDeploymentWithoutHistory(compatible, "SCHEMA-COMPATIBLE:sports_db"),
+    ).toBe("readonly-compatible");
+    expect(compatible.action).toBe("adoption-required");
+    expect(compatible.statements).toEqual([]);
+    expect(
+      clearDeploymentWithoutHistory(
+        classifySnapshot(appliedSnapshot()),
+        "SCHEMA-COMPATIBLE:sports_db",
+      ),
+    ).toBe("recorded");
     expect(
       classifySnapshot(
         snapshot({

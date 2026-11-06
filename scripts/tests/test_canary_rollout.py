@@ -63,6 +63,13 @@ class CanaryRolloutTests(unittest.TestCase):
         adoption = decide_bootstrap("adoption-required")
         self.assertEqual(adoption.decision, "abort")
         self.assertIn("ADOPT", adoption.reason)
+        confirmed = decide_bootstrap(
+            "adoption-required:SCHEMA-COMPATIBLE:sports_db",
+        )
+        self.assertEqual(confirmed.decision, "continue")
+        self.assertIn("sin historial", confirmed.reason)
+        self.assertNotIn("historial canónico ya aplicado", confirmed.reason)
+        self.assertEqual(decide_bootstrap("ADOPT:sports_db").decision, "abort")
         self.assertEqual(decide_bootstrap("incompatible").decision, "abort")
 
     def test_images_reject_latest_local_ids_and_swapped_tracks(self) -> None:

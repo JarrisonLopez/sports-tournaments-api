@@ -48,6 +48,8 @@ REVISION = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
 BOOTSTRAP_ACTIONS = frozenset(
     {"apply", "already-applied", "adoption-required", "incompatible"}
 )
+SCHEMA_COMPATIBLE_CONFIRMATION = "SCHEMA-COMPATIBLE:sports_db"
+CONFIRMED_EXISTING_SCHEMA = f"adoption-required:{SCHEMA_COMPATIBLE_CONFIRMATION}"
 
 
 @dataclass(frozen=True)
@@ -119,9 +121,18 @@ def decide_bootstrap(action: str) -> GateResult:
 
     already-applied: el checksum canónico está registrado.
     apply: la base está vacía o el plan pide APPLY; no se despliega.
-    adoption-required: hay tablas sin ese historial. No se ejecuta ADOPT.
+    adoption-required: hay tablas sin ese historial. ADOPT no se ejecuta.
+    adoption-required:SCHEMA-COMPATIBLE:sports_db: el plan ya dijo que el
+    esquema coincide y el operador confirma usarlo sin escribir historial.
     incompatible: el esquema no coincide. No se despliega.
     """
+    if action in {"adopt", "ADOPT:sports_db"}:
+        return GateResult("abort", "ADOPT sigue bloqueado y no escribe historial")
+    if action == CONFIRMED_EXISTING_SCHEMA:
+        return GateResult(
+            "continue",
+            "esquema compatible sin historial; no es already-applied, no se ejecuta DDL ni se escribe schema_bootstrap_history",
+        )
     if action not in BOOTSTRAP_ACTIONS:
         return GateResult("abort", "accion de bootstrap desconocida")
     if action == "already-applied":

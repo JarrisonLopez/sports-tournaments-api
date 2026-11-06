@@ -85,6 +85,33 @@ export type BootstrapPlan = {
   statements: readonly string[];
 };
 
+export const EXISTING_SCHEMA_CONFIRMATION = "SCHEMA-COMPATIBLE:sports_db";
+
+export type DeploymentClearance = "recorded" | "readonly-compatible" | "blocked";
+
+export function clearDeploymentWithoutHistory(
+  plan: BootstrapPlan,
+  confirmation: string,
+): DeploymentClearance {
+  if (confirmation === "ADOPT:sports_db" || confirmation.toLowerCase() === "adopt") {
+    return "blocked";
+  }
+
+  if (plan.action === "already-applied" && plan.statements.length === 0) {
+    return "recorded";
+  }
+
+  if (
+    plan.action === "adoption-required" &&
+    plan.statements.length === 0 &&
+    confirmation === EXISTING_SCHEMA_CONFIRMATION
+  ) {
+    return "readonly-compatible";
+  }
+
+  return "blocked";
+}
+
 export function targetFromEnv(
   env: NodeJS.ProcessEnv,
   confirmDatabase?: string,

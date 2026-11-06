@@ -44,7 +44,7 @@ on:
         type: string
         default: ''
       bootstrap_action:
-        description: 'accion del plan de bootstrap. ADOPT no se ejecuta.'
+        description: 'already-applied, apply, adoption-required o adoption-required:SCHEMA-COMPATIBLE:sports_db. ADOPT no se ejecuta.'
         required: false
         type: string
         default: ''
