@@ -1,0 +1,213 @@
+name: Entrega 3 Canary
+
+# Despliegue manual del servicio único sports-demo-api.
+# WIF solo autoriza assertion.sub de refs/heads/main.
+# No usar environment: cambiaría el subject OIDC.
+# Terraform no reparte estos porcentajes. Este workflow tampoco corre en preflight.
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'preflight no toca GCP. El resto exige la confirmación indicada.'
+        required: true
+        type: choice
+        default: preflight
+        options:
+          - preflight
+          - publish
+          - deploy-stable
+          - deploy-canary
+          - promote
+          - rollback
+      confirmation:
+        description: 'PUBLISH, DEPLOY-STABLE, DEPLOY-CANARY, PROMOTE o ROLLBACK'
+        required: true
+        type: string
+      stable_digest:
+        description: 'Digest @sha256 de sports-api-v3'
+        required: false
+        type: string
+        default: ''
+      canary_digest:
+        description: 'Digest @sha256 de sports-api-v4'
+        required: false
+        type: string
+        default: ''
+      stable_revision:
+        description: 'Revisión Stable existente. Nunca latest.'
+        required: false
+        type: string
+        default: ''
+      canary_revision:
+        description: 'Revisión Canary existente. Nunca latest.'
+        required: false
+        type: string
+        default: ''
+      bootstrap_action:
+        description: 'already-applied, apply, adoption-required o adoption-required:SCHEMA-COMPATIBLE:sports_db. ADOPT no se ejecuta.'
+        required: false
+        type: string
+        default: ''
+      split:
+        description: 'Reparto stable/canary: 100/0, 90/10, 50/50 o 0/100.'
+        required: false
+        type: string
+        default: '100/0'
+      timing:
+        description: 'Ventana y espera, por ejemplo 180,0. La ventana va de 180 a 600.'
+        required: false
+        type: string
+        default: '180,0'
+      source_shas:
+        description: 'SHA estable,SHA canary. Deben existir en el remoto.'
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  group: entrega3-gcp-terraform
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  preflight:
+    name: Local canary decisions
+    if: inputs.operation == 'preflight'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run local canary and plan tests
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_canary_rollout.py
+          python3 scripts/tests/test_cloud_monitoring.py
+          python3 scripts/tests/test_canary_smoke.py
+          python3 scripts/tests/test_canary_scenarios.py
+          python3 scripts/tests/test_validate_entrega3_deploy_plan.py
+
+  rollout:
+    name: Canary rollout
+    if: inputs.operation != 'preflight' && github.ref == 'refs/heads/main' && github.repository == 'JarrisonLopez/sports-tournaments-api' && github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: sports-tournaments-multicloud
+      REGION: us-central1
+      SERVICE: sports-demo-api
+      AR_REPOSITORY: sports-demo-images
+      WIF_PROVIDER: projects/171179411205/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+      DEPLOY_SA: sports-demo-deploy@sports-tournaments-multicloud.iam.gserviceaccount.com
+      RUNTIME_SA: sports-demo-api@sports-tournaments-multicloud.iam.gserviceaccount.com
+      CONNECTION_NAME: sports-tournaments-multicloud:us-central1:sports-demo-mysql
+      DB_SECRET: sports-demo-db-password
+      OPERATION: ${{ inputs.operation }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      STABLE_DIGEST: ${{ inputs.stable_digest }}
+      CANARY_DIGEST: ${{ inputs.canary_digest }}
+      STABLE_REVISION: ${{ inputs.stable_revision }}
+      CANARY_REVISION: ${{ inputs.canary_revision }}
+      BOOTSTRAP_ACTION: ${{ inputs.bootstrap_action }}
+      SPLIT: ${{ inputs.split }}
+      TIMING: ${{ inputs.timing }}
+      SOURCE_SHAS: ${{ inputs.source_shas }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Require the matching confirmation
+        run: |
+          set -euo pipefail
+          case "${OPERATION}" in
+            publish) expected="PUBLISH" ;;
+            deploy-stable) expected="DEPLOY-STABLE" ;;
+            deploy-canary) expected="DEPLOY-CANARY" ;;
+            promote) expected="PROMOTE" ;;
+            rollback) expected="ROLLBACK" ;;
+            *) echo "Operación no desplegable."; exit 1 ;;
+          esac
+          if [ "${CONFIRMATION}" != "${expected}" ]; then
+            echo "Confirmación inválida para ${OPERATION}."
+            exit 1
+          fi
+          case "${TIMING}" in
+            *,*)
+              observation="${TIMING%%,*}"
+              waited="${TIMING##*,}"
+              ;;
+            *)
+              observation="${TIMING}"
+              waited="0"
+              ;;
+          esac
+          if ! [[ "${observation}" =~ ^[0-9]+$ ]] || [ "${observation}" -lt 180 ] || [ "${observation}" -gt 600 ]; then
+            echo "La ventana debe cubrir el muestreo y el retraso de publicación: 180 a 600."
+            exit 1
+          fi
+          if ! [[ "${waited}" =~ ^[0-9]+$ ]] || [ "${waited}" -gt 600 ]; then
+            echo "La espera acumulada debe ser un entero entre 0 y 600."
+            exit 1
+          fi
+          stable_percent="${SPLIT%%/*}"
+          canary_percent="${SPLIT##*/}"
+          if [ "${OPERATION}" = "promote" ]; then
+            python3 scripts/canary_rollout.py traffic-argv \
+              --project "${PROJECT_ID}" \
+              --region "${REGION}" \
+              --stable-revision "${STABLE_REVISION}" \
+              --canary-revision "${CANARY_REVISION}" \
+              --stable-percent "${stable_percent}" \
+              --canary-percent "${canary_percent}" > /tmp/split-check.json
+          fi
+          stable_sha=""
+          canary_sha=""
+          if [ -n "${SOURCE_SHAS}" ]; then
+            stable_sha="${SOURCE_SHAS%%,*}"
+            canary_sha="${SOURCE_SHAS#*,}"
+          fi
+          {
+            echo "STABLE_PERCENT=${stable_percent}"
+            echo "CANARY_PERCENT=${canary_percent}"
+            echo "OBSERVATION_SECONDS=${observation}"
+            echo "WAITED_SECONDS=${waited}"
+            echo "STABLE_SHA=${stable_sha}"
+            echo "CANARY_SHA=${canary_sha}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Refuse an empty database or a blocked adoption
+        if: inputs.operation == 'deploy-stable' || inputs.operation == 'deploy-canary'
+        run: |
+          set -euo pipefail
+          python3 scripts/canary_rollout.py bootstrap-gate --action "${BOOTSTRAP_ACTION}"
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SA }}
+          token_format: access_token
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Run the confirmed operation
+        env:
+          CANARY_GCP_EXECUTION: authorized
+        run: bash scripts/canary_gcp.sh

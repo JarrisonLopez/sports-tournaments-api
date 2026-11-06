@@ -9,6 +9,10 @@ on:
         description: 'Escribe DEPLOY para confirmar el despliegue desde main'
         required: true
         type: string
+      sports_image_digest:
+        description: 'Digest estable ya publicado (@sha256). Este workflow no construye Sports ni mueve su tráfico.'
+        required: true
+        type: string
 
 concurrency:
   group: entrega3-gcp-terraform
@@ -72,24 +76,20 @@ jobs:
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
 
-      - name: Build and push container images
+      - name: Build Object Storage without publishing Sports
         id: images
+        env:
+          SPORTS_IMAGE_DIGEST: ${{ inputs.sports_image_digest }}
         run: |
           set -euo pipefail
+          python3 scripts/canary_rollout.py stable-digest --digest "${SPORTS_IMAGE_DIGEST}" >/dev/null
           REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}"
-          SPORTS_IMAGE="${REGISTRY}/sports-api-v3:${GITHUB_SHA}"
           STORAGE_IMAGE="${REGISTRY}/object-storage-v3:${GITHUB_SHA}"
-
-          echo "Building Sports API from ./Dockerfile"
-          docker build -f Dockerfile -t "${SPORTS_IMAGE}" .
 
           echo "Building Object Storage from ./object-storage/Dockerfile"
           docker build -f object-storage/Dockerfile -t "${STORAGE_IMAGE}" object-storage
 
-          docker push "${SPORTS_IMAGE}"
-          docker push "${STORAGE_IMAGE}"
-
-          echo "sports_image=${SPORTS_IMAGE}" >> "${GITHUB_OUTPUT}"
+          echo "sports_image=${SPORTS_IMAGE_DIGEST}" >> "${GITHUB_OUTPUT}"
           echo "object_storage_image=${STORAGE_IMAGE}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up Terraform
@@ -172,11 +172,17 @@ jobs:
         working-directory: terraform
         run: |
           set -euo pipefail
-          # Tras Provision (deploy_applications=false) el primer Deploy debe poder
-          # crear Cloud Run + IAM invoker. Redesplegues posteriores: solo update.
-          # Delete/replace y cambios fuera de la allowlist siguen prohibidos.
+          # El primer Deploy puede crear Cloud Run. Un update de sports-demo-api
+          # queda rechazado: su tráfico lo fija el workflow canary, no este apply.
           terraform show -json tfplan > tfplan.json
           python3 ../scripts/validate_entrega3_deploy_plan.py tfplan.json
+
+      - name: Publish Object Storage after the plan is accepted
+        env:
+          STORAGE_IMAGE: ${{ steps.images.outputs.object_storage_image }}
+        run: |
+          set -euo pipefail
+          docker push "${STORAGE_IMAGE}"
 
       - name: Terraform apply
         working-directory: terraform
@@ -213,12 +219,14 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "## Entrega 3 GCP Deploy" >> "${GITHUB_STEP_SUMMARY}"
-          echo "" >> "${GITHUB_STEP_SUMMARY}"
-          echo "- Branch: \`${GITHUB_REF}\`" >> "${GITHUB_STEP_SUMMARY}"
-          echo "- Commit: \`${GITHUB_SHA}\`" >> "${GITHUB_STEP_SUMMARY}"
-          echo "- Sports image: \`${{ steps.images.outputs.sports_image }}\`" >> "${GITHUB_STEP_SUMMARY}"
-          echo "- Object Storage image: \`${{ steps.images.outputs.object_storage_image }}\`" >> "${GITHUB_STEP_SUMMARY}"
-          echo "- Sports API URL: \`${{ steps.tfouts.outputs.sports_api_url }}\`" >> "${GITHUB_STEP_SUMMARY}"
-          echo "- Object Storage URL: \`${{ steps.tfouts.outputs.object_storage_url }}\`" >> "${GITHUB_STEP_SUMMARY}"
-          echo "- Job result: \`${{ job.status }}\`" >> "${GITHUB_STEP_SUMMARY}"
+          {
+            echo "## Entrega 3 GCP Deploy"
+            echo ""
+            echo "- Branch: \`${GITHUB_REF}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Sports image: \`${{ steps.images.outputs.sports_image }}\`"
+            echo "- Object Storage image: \`${{ steps.images.outputs.object_storage_image }}\`"
+            echo "- Sports API URL: \`${{ steps.tfouts.outputs.sports_api_url }}\`"
+            echo "- Object Storage URL: \`${{ steps.tfouts.outputs.object_storage_url }}\`"
+            echo "- Job result: \`${{ job.status }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

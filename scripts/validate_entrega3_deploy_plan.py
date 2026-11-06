@@ -53,6 +53,11 @@ def classify_change(address: str, actions: list[str]) -> str | None:
         return "create is not on the deploy allowlist"
 
     if actions == ["update"]:
+        if address == "module.sports_api[0].google_cloud_run_v2_service.service":
+            return (
+                "sports-demo-api updates are owned by the canary workflow; "
+                "a template update can move LATEST traffic to 100 percent"
+            )
         if address in ALLOWED_UPDATE_ADDRESSES:
             return None
         return "update is not on the deploy allowlist"
@@ -138,8 +143,9 @@ def validate_plan_file(path: Path) -> int:
         for item in rejected:
             print(f"  - {item}", file=sys.stderr)
         print(
-            "Deploy allows no-op; update of the two Cloud Run services; "
-            "create of those services and Object Storage service_invoker IAM only.",
+            "Deploy allows no-op; update of Object Storage; "
+            "create of the two Cloud Run services and Object Storage service_invoker IAM only. "
+            "Updates of sports-demo-api are rejected so this workflow cannot reset canary traffic.",
             file=sys.stderr,
         )
         return 1
