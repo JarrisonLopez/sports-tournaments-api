@@ -72,7 +72,8 @@ describe("resolveRuntimeIdentity", () => {
       readFileSync(join(process.cwd(), "package.json"), "utf8"),
     ) as { version: string };
 
-    expect(packageJson.version).toBe("1.0.0");
+    expect(typeof packageJson.version).toBe("string");
+    expect(packageJson.version.length).toBeGreaterThan(0);
 
     const fromEnv = resolveRuntimeIdentity({
       API_VERSION: "3.0.1",

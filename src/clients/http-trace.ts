@@ -1,26 +1,12 @@
-import { context, propagation, trace } from "@opentelemetry/api";
-
 /**
- * Cabeceras de correlación para llamadas salientes al flujo multicloud.
- * Propaga W3C (traceparent/tracestate) desde el contexto activo y el x-trace-id de negocio.
+ * Cabeceras de negocio para llamadas salientes.
+ * El header W3C `traceparent`/`tracestate` lo inyecta la instrumentación Undici/OTel
+ * sobre el contexto activo; aquí solo propagamos el identificador funcional.
  */
 export function buildOutboundTraceHeaders(
   traceId: string,
 ): Record<string, string> {
-  const headers: Record<string, string> = {
+  return {
     "x-trace-id": traceId,
   };
-
-  propagation.inject(context.active(), headers);
-
-  const span = trace.getActiveSpan();
-  if (span && trace.isSpanContextValid(span.spanContext())) {
-    // Garantiza presencia explícita aunque el propagator no rellene en tests.
-    if (!headers.traceparent) {
-      const sc = span.spanContext();
-      headers.traceparent = `00-${sc.traceId}-${sc.spanId}-01`;
-    }
-  }
-
-  return headers;
 }

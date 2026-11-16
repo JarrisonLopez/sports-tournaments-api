@@ -175,10 +175,13 @@ describe("Spans CLIENT de Undici en Sports", () => {
       expect(spans).toHaveLength(1);
       expect(spans[0]?.name).toBe("GET /api/v2/habitacion/:id");
       expect(spans[0]?.attributes["url.path"]).toBe("/api/v2/habitacion/7");
-      expect(spans[0]?.parentSpanContext?.spanId).toBe(
+      // El span CLIENT cuelga del span de dependencia hotel.get_habitacion,
+      // que a su vez cuelga del parent de negocio.
+      expect(spans[0]?.spanContext().traceId).toBe(parent.spanContext().traceId);
+      expect(spans[0]?.parentSpanContext?.spanId).not.toBe(
         parent.spanContext().spanId,
       );
-      expect(spans[0]?.spanContext().traceId).toBe(parent.spanContext().traceId);
+      expect(spans[0]?.parentSpanContext?.spanId).toBeTruthy();
 
       const traceparent = headerValue(received ?? {}, "traceparent");
       expect(traceparent).toMatch(TRACEPARENT);

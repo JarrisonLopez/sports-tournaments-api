@@ -1,12 +1,35 @@
 # Sports Tournaments API
 
-Este repositorio contiene la evolución del proyecto académico de torneos deportivos, desde la API base de la primera entrega hasta la infraestructura individual de la Entrega 3 en Google Cloud.
+Este repositorio contiene la evolución del proyecto académico de torneos deportivos, desde la API base hasta el **Seguimiento #4 de Ingeniería del Caos**.
 
 - **Entrega 1:** API REST de torneos deportivos, con entidades propias, MySQL, Docker y pipelines de CI.
-- **Entrega 2:** el mismo repositorio añade `/api/v2`, integración en tiempo real con las API de Hotel y Cine, Kubernetes en GKE, un servicio de Object Storage sobre Google Cloud Storage y observabilidad.
-- **Entrega 3:** superficie `/api/v3` individual (sin Hotel ni Cine), desplegada en Cloud Run con Terraform y un pipeline de GitHub Actions. V1 y V2 se conservan en el código.
+- **Entrega 2:** `/api/v2`, integración con Hotel y Cine, Kubernetes, Object Storage y observabilidad.
+- **Entrega 3:** `/api/v3` individual en Cloud Run (GCP) con Terraform y canary; V1/V2 se conservan.
+- **Seguimiento #4:** Sports como coordinador multicloud sobre **AWS + Kubernetes (k3s/EC2)**, flujo **secuencial** Hotel (OCI) → Cine (GCP), experimento de latencia, timeout + circuit breaker, k6, chaos gate. Documentación en [`docs/seguimiento-4/`](docs/seguimiento-4/README.md).
 
-La Entrega 2 no sustituye las rutas originales. Las conserva y agrega la superficie `/api/v2`. La Entrega 3 tampoco las sustituye: añade `/api/v3` y un runtime distinto en Cloud Run.
+La Entrega 2 no sustituye las rutas originales. Las conserva y agrega la superficie `/api/v2`. La Entrega 3 tampoco las sustituye: añade `/api/v3` y un runtime distinto en Cloud Run. El Seguimiento #4 **reutiliza** V2 como flujo evaluado y no elimina el stack GCP/canary histórico.
+
+## Seguimiento #4 — acceso rápido
+
+| Tema | Ruta |
+|---|---|
+| Arquitectura AWS | [`docs/seguimiento-4/ARQUITECTURA_AWS.md`](docs/seguimiento-4/ARQUITECTURA_AWS.md) |
+| Contratos Samuel/Daniel | [`docs/seguimiento-4/CONTRATOS_MULTICLOUD.md`](docs/seguimiento-4/CONTRATOS_MULTICLOUD.md) |
+| Experimento latencia | [`docs/seguimiento-4/EXPERIMENTO_LATENCIA.md`](docs/seguimiento-4/EXPERIMENTO_LATENCIA.md) |
+| R0/R1 | [`docs/seguimiento-4/RONDAS_R0_R1.md`](docs/seguimiento-4/RONDAS_R0_R1.md) |
+| Informe | [`docs/seguimiento-4/INFORME.md`](docs/seguimiento-4/INFORME.md) |
+| Demo | [`docs/seguimiento-4/DEMO_SCRIPT.md`](docs/seguimiento-4/DEMO_SCRIPT.md) |
+| Manifiestos K8s AWS | [`k8s/aws/`](k8s/aws/) |
+| Chaos gate | [`.github/workflows/chaos-gate.yml`](.github/workflows/chaos-gate.yml) |
+
+```powershell
+npm test
+npm run build
+npm run chaos:rounds
+.\load\run-k6.ps1 -Round baseline
+```
+
+Versión SemVer del proyecto: **4.1.0** (`package.json`). El despliegue AWS remoto permanece **no verificado** hasta un `terraform apply` autorizado.
 
 # Entrega 3 — API V3 individual (desplegada)
 
@@ -14,7 +37,7 @@ La Entrega 3 es **individual**. V1 y V2 siguen en el código. V3 **no** depende 
 
 La infraestructura GCP está **aplicada y operativa** en el proyecto `sports-tournaments-multicloud` (`us-central1`). El detalle de módulos vive en [`terraform/README.md`](terraform/README.md); el bucket de estado, en [`terraform/bootstrap/README.md`](terraform/bootstrap/README.md); la identidad de aprovisionamiento, en [`terraform/persistent/README.md`](terraform/persistent/README.md).
 
-El campo `version` de `package.json` sigue en `1.0.0`. “API V2” y “API V3” se refieren a los prefijos HTTP `/api/v2` y `/api/v3`, no a releases SemVer 2.0.0 o 3.0.0.
+“API V2” y “API V3” se refieren a los prefijos HTTP `/api/v2` y `/api/v3`. El SemVer del repositorio para Seguimiento #4 es **4.1.0**.
 
 ## Endpoint V3
 

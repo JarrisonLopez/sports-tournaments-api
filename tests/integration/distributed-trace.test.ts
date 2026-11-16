@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const BUSINESS_TRACE_ID = "distributed-business-trace";
 const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/;
+const INTERNAL_KIND = 0;
 const SERVER_KIND = 1;
 const CLIENT_KIND = 2;
 const READY_TIMEOUT_MS = 10_000;
@@ -153,10 +154,14 @@ describe("Tracing distribuido Sports -> Object Storage", () => {
       const sportsSpans = sportsSession.spans;
       const storageSpans = storageSession.spans;
 
-      expect(sportsSpans).toHaveLength(4);
+      // SERVER + flujo.multicloud + hotel/cine dependency spans + 3 CLIENT HTTP
+      expect(sportsSpans).toHaveLength(7);
       expect(storageSpans).toHaveLength(2);
 
       const sportsServer = one(sportsSpans, SPORTS_SERVER, SERVER_KIND);
+      const flujoSpan = one(sportsSpans, "flujo.multicloud", INTERNAL_KIND);
+      const hotelDep = one(sportsSpans, "hotel.get_habitacion", INTERNAL_KIND);
+      const cineDep = one(sportsSpans, "cine.get_pelicula", INTERNAL_KIND);
       const hotelClient = one(sportsSpans, HOTEL_CLIENT, CLIENT_KIND);
       const cineClient = one(sportsSpans, CINE_CLIENT, CLIENT_KIND);
       const storageClient = one(
@@ -178,18 +183,26 @@ describe("Tracing distribuido Sports -> Object Storage", () => {
         "/api/v2/flujo/:torneoId/:habitacionId/:peliculaId",
       );
 
+      expect(flujoSpan.traceId).toBe(traceId);
+      expect(flujoSpan.parentSpanId).toBe(sportsServer.spanId);
+
+      expect(hotelDep.traceId).toBe(traceId);
+      expect(hotelDep.parentSpanId).toBe(flujoSpan.spanId);
+      expect(cineDep.traceId).toBe(traceId);
+      expect(cineDep.parentSpanId).toBe(flujoSpan.spanId);
+
       expect(hotelClient.traceId).toBe(traceId);
-      expect(hotelClient.parentSpanId).toBe(sportsServer.spanId);
+      expect(hotelClient.parentSpanId).toBe(hotelDep.spanId);
       expect(hotelClient.serviceName).toBe("sports-api");
       expect(hotelClient["url.path"]).toBe("/api/v2/habitacion/7");
 
       expect(cineClient.traceId).toBe(traceId);
-      expect(cineClient.parentSpanId).toBe(sportsServer.spanId);
+      expect(cineClient.parentSpanId).toBe(cineDep.spanId);
       expect(cineClient.serviceName).toBe("sports-api");
       expect(cineClient["url.path"]).toBe("/api/v2/peliculas/42");
 
       expect(storageClient.traceId).toBe(traceId);
-      expect(storageClient.parentSpanId).toBe(sportsServer.spanId);
+      expect(storageClient.parentSpanId).toBe(flujoSpan.spanId);
       expect(storageClient.serviceName).toBe("sports-api");
       expect(storageClient["url.path"]).toBe("/api/v2/artifacts");
 

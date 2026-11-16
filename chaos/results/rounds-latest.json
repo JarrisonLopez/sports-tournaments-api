@@ -31,9 +31,9 @@
     "errorRate": 0,
     "sloMs": 500,
     "withinSloRate": 1,
-    "p95Ms": 88.95949999999993,
-    "avgMs": 37.618562499999975,
-    "wallClockMs": 114.64449999999988,
+    "p95Ms": 97.2320000000002,
+    "avgMs": 40.506025000000015,
+    "wallClockMs": 123.13570000000004,
     "errorNames": {}
   },
   "r0": {
@@ -48,9 +48,9 @@
     "errorRate": 0,
     "sloMs": 500,
     "withinSloRate": 0,
-    "p95Ms": 827.8089000000002,
-    "avgMs": 818.2613791666666,
-    "wallClockMs": 2457.2932,
+    "p95Ms": 823.7155000000002,
+    "avgMs": 818.5418958333333,
+    "wallClockMs": 2459.0203,
     "errorNames": {}
   },
   "r1": {
@@ -65,19 +65,19 @@
     "errorRate": 1,
     "sloMs": 500,
     "withinSloRate": 1,
-    "p95Ms": 310.6314000000002,
-    "avgMs": 127.73978749999996,
-    "wallClockMs": 616.4010000000007,
+    "p95Ms": 308.47080000000005,
+    "avgMs": 128.32494583333335,
+    "wallClockMs": 615.9456,
     "errorNames": {
       "HotelTimeoutError": 10,
       "CircuitOpenError": 14
     }
   },
   "comparison": {
-    "p95DeltaPct": -62.475469881998116,
+    "p95DeltaPct": -62.55129349878691,
     "successRateDeltaPp": -100,
     "withinSloDeltaPp": 100,
-    "wallClockDeltaPct": -74.91544761528658,
+    "wallClockDeltaPct": -74.95158539358134,
     "hypothesis": "Bajo latencia Sports→Hotel y carga concurrente fija, timeout+CB mejoran el cumplimiento de presupuesto/saturación respecto a R0; se reporta el efecto sobre éxito de negocio.",
     "conclusion": "Hipótesis PARCIALMENTE SOSTENIDA: R1 reduce saturación/p95/cumplimiento SLO vs R0, con trade-off en éxitos de negocio (fail-fast).",
     "diagnosis": {
@@ -85,5 +85,5 @@
       "proposedFix": "Añadir fallback degradado o reintento idempotente con presupuesto, o limitar el experimento a fallos de Hotel (5xx) donde CB evita cascadas sin sacrificar éxitos sanos."
     }
   },
-  "generatedAt": "2026-11-16T23:23:38.820Z"
+  "generatedAt": "2026-11-16T23:32:27.456Z"
 }

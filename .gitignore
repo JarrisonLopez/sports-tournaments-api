@@ -3,6 +3,7 @@ dist/
 .env
 coverage/
 PROJECT_CONTEXT.md
+.worktrees/
 
 # AWS / chaos lab secrets and results
 k8s/aws/secret.yaml
