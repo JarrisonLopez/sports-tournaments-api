@@ -1,7 +1,15 @@
 import { SpanStatusCode, trace } from "@opentelemetry/api";
 
 import { applyHotelLatencyIfActive } from "../chaos/hotel-latency-fault";
+import {
+  getHotelCircuitBreaker,
+  resetHotelCircuitBreakerForTests,
+} from "../resilience/circuit-breaker";
+import { resolveResilienceConfig } from "../resilience/config";
+import { withTimeout } from "../resilience/timeout";
 import { buildOutboundTraceHeaders } from "./http-trace";
+
+export { resetHotelCircuitBreakerForTests };
 
 export interface HabitacionRemota {
   id: number;
@@ -45,6 +53,7 @@ export async function obtenerHabitacion(
   const env = deps.env ?? process.env;
   const hotelApiUrl = env.HOTEL_API_URL;
   const doFetch = deps.fetch ?? fetch;
+  const resilience = resolveResilienceConfig(env);
 
   if (!hotelApiUrl || hotelApiUrl.trim() === "") {
     throw new HotelConfigError();
@@ -53,45 +62,70 @@ export async function obtenerHabitacion(
   const baseUrl = hotelApiUrl.trim().replace(/\/+$/, "");
   const url = `${baseUrl}/api/v2/habitacion/${habitacionId}`;
 
-  return tracer.startActiveSpan(
-    "hotel.get_habitacion",
-    {
-      attributes: {
-        "peer.service": "hotel-api",
-        "http.method": "GET",
-        "url.full": url,
-        "sports.trace_id": traceId,
+  const invoke = async (): Promise<HabitacionRemota> =>
+    tracer.startActiveSpan(
+      "hotel.get_habitacion",
+      {
+        attributes: {
+          "peer.service": "hotel-api",
+          "http.method": "GET",
+          "url.full": url,
+          "sports.trace_id": traceId,
+          "resilience.enabled": resilience.enabled,
+        },
       },
-    },
-    async (span) => {
-      try {
-        // Interruptor propio: latencia solo si el laboratorio la activó.
-        await applyHotelLatencyIfActive();
-        if (deps.beforeRequest) {
-          await deps.beforeRequest();
+      async (span) => {
+        try {
+          await applyHotelLatencyIfActive();
+          if (deps.beforeRequest) {
+            await deps.beforeRequest();
+          }
+
+          const callFetch = async (signal?: AbortSignal) => {
+            const response = await doFetch(url, {
+              headers: buildOutboundTraceHeaders(traceId),
+              signal,
+            });
+
+            span.setAttribute("http.status_code", response.status);
+
+            if (!response.ok) {
+              throw new HotelRequestError(response.status, response.statusText);
+            }
+
+            return (await response.json()) as HabitacionRemota;
+          };
+
+          if (!resilience.enabled) {
+            return callFetch();
+          }
+
+          return withTimeout(resilience.hotelTimeoutMs, (signal) =>
+            callFetch(signal),
+          );
+        } catch (error) {
+          span.recordException(error as Error);
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: error instanceof Error ? error.message : "hotel error",
+          });
+          throw error;
+        } finally {
+          span.end();
         }
+      },
+    );
 
-        const response = await doFetch(url, {
-          headers: buildOutboundTraceHeaders(traceId),
-        });
+  if (!resilience.enabled) {
+    return invoke();
+  }
 
-        span.setAttribute("http.status_code", response.status);
+  const breaker = getHotelCircuitBreaker({
+    failureThreshold: resilience.circuitFailureThreshold,
+    successThreshold: resilience.circuitSuccessThreshold,
+    openMs: resilience.circuitOpenMs,
+    name: "hotel",
+  });
 
-        if (!response.ok) {
-          throw new HotelRequestError(response.status, response.statusText);
-        }
-
-        return (await response.json()) as HabitacionRemota;
-      } catch (error) {
-        span.recordException(error as Error);
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: error instanceof Error ? error.message : "hotel error",
-        });
-        throw error;
-      } finally {
-        span.end();
-      }
-    },
-  );
+  return breaker.exec(invoke);
 }
