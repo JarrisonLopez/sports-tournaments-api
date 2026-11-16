@@ -4,6 +4,14 @@ dist/
 coverage/
 PROJECT_CONTEXT.md
 
+# AWS / chaos lab secrets and results
+k8s/aws/secret.yaml
+infra/aws/terraform/*.tfvars
+!infra/aws/terraform/*.tfvars.example
+chaos/results/
+load/results/
+lab/.runtime/
+
 # Terraform local cache. .terraform.lock.hcl queda fuera de esta carpeta y se versiona.
 .terraform/
 
