@@ -19,6 +19,7 @@ import { healthRoutes } from "./routes/health.routes";
 import { v2Routes } from "./routes/v2";
 import { v3Routes } from "./routes/v3";
 import { v4Routes } from "./routes/v4";
+import { chaosRoutes } from "./routes/chaos.routes";
 import {
   createHttpMetrics,
   registerRedMetrics,
@@ -68,6 +69,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
 
   app.register(healthRoutes);
+  app.register(chaosRoutes);
   app.register(torneoRoutes);
   app.register(canchaRoutes);
   app.register(jugadorRoutes);

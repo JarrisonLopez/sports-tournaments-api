@@ -1,5 +1,6 @@
 import { SpanStatusCode, trace } from "@opentelemetry/api";
 
+import { applyHotelLatencyIfActive } from "../chaos/hotel-latency-fault";
 import { buildOutboundTraceHeaders } from "./http-trace";
 
 export interface HabitacionRemota {
@@ -64,6 +65,8 @@ export async function obtenerHabitacion(
     },
     async (span) => {
       try {
+        // Interruptor propio: latencia solo si el laboratorio la activó.
+        await applyHotelLatencyIfActive();
         if (deps.beforeRequest) {
           await deps.beforeRequest();
         }

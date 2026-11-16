@@ -8,8 +8,10 @@ PROJECT_CONTEXT.md
 k8s/aws/secret.yaml
 infra/aws/terraform/*.tfvars
 !infra/aws/terraform/*.tfvars.example
-chaos/results/
-load/results/
+chaos/results/**
+!chaos/results/.gitkeep
+load/results/**
+!load/results/.gitkeep
 lab/.runtime/
 
 # Terraform local cache. .terraform.lock.hcl queda fuera de esta carpeta y se versiona.
