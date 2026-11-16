@@ -9,7 +9,10 @@
     "schema:bootstrap": "node dist/schema/bootstrap-cli.js",
     "test:coverage": "vitest run --coverage",
     "test:coverage:testing": "vitest run --coverage --config vitest.testing.config.mts",
-    "test:coverage:production": "vitest run --coverage --config vitest.production.config.mts"
+    "test:coverage:production": "vitest run --coverage --config vitest.production.config.mts",
+    "chaos:rounds": "node scripts/chaos/run_rounds.mjs",
+    "chaos:hotel-latency": "node scripts/chaos/run_hotel_latency_experiment.mjs",
+    "lab:mocks": "node lab/mocks/hotel-mock.mjs"
   },
   "keywords": [],
   "author": "",

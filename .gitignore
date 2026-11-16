@@ -10,6 +10,7 @@ infra/aws/terraform/*.tfvars
 !infra/aws/terraform/*.tfvars.example
 chaos/results/**
 !chaos/results/.gitkeep
+!chaos/results/rounds-latest.json
 load/results/**
 !load/results/.gitkeep
 lab/.runtime/

@@ -76,12 +76,14 @@ export async function obtenerHabitacion(
       },
       async (span) => {
         try {
-          await applyHotelLatencyIfActive();
           if (deps.beforeRequest) {
             await deps.beforeRequest();
           }
 
           const callFetch = async (signal?: AbortSignal) => {
+            // Latencia de laboratorio dentro del presupuesto de timeout.
+            await applyHotelLatencyIfActive(Date.now(), signal);
+
             const response = await doFetch(url, {
               headers: buildOutboundTraceHeaders(traceId),
               signal,

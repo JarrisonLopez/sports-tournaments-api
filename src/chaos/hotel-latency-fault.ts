@@ -126,6 +126,7 @@ export function deactivateHotelLatencyFault(
 
 export async function applyHotelLatencyIfActive(
   now = Date.now(),
+  signal?: AbortSignal,
 ): Promise<number> {
   expireIfNeeded(now);
   if (!isFaultActive(now)) {
@@ -133,8 +134,35 @@ export async function applyHotelLatencyIfActive(
   }
 
   const delay = state.latencyMs;
-  await new Promise((resolve) => setTimeout(resolve, delay));
+  await delayWithOptionalAbort(delay, signal);
   return delay;
+}
+
+function delayWithOptionalAbort(
+  delayMs: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!signal) {
+    return new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  if (signal.aborted) {
+    return Promise.reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+  }
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+    };
+
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 export function resetHotelLatencyFaultForTests(): void {

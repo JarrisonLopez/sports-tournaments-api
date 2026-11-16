@@ -1,0 +1,89 @@
+{
+  "environment": "local-mocks",
+  "notMulticloud": true,
+  "preflight": {
+    "hotel": "http://127.0.0.1:18081",
+    "cine": "http://127.0.0.1:18082",
+    "latencyMs": 800,
+    "hotelTimeoutMs": 300,
+    "requests": 24,
+    "concurrency": 8,
+    "sloMs": 500
+  },
+  "procedure": [
+    "preflight mocks",
+    "steady baseline",
+    "r0 fault without resilience",
+    "restore fault switch",
+    "r1 same fault with timeout+CB",
+    "compare",
+    "final verify fault off"
+  ],
+  "baseline": {
+    "name": "baseline",
+    "resilienceEnabled": false,
+    "fault": false,
+    "requests": 24,
+    "concurrency": 8,
+    "success": 24,
+    "errors": 0,
+    "successRate": 1,
+    "errorRate": 0,
+    "sloMs": 500,
+    "withinSloRate": 1,
+    "p95Ms": 88.95949999999993,
+    "avgMs": 37.618562499999975,
+    "wallClockMs": 114.64449999999988,
+    "errorNames": {}
+  },
+  "r0": {
+    "name": "r0",
+    "resilienceEnabled": false,
+    "fault": true,
+    "requests": 24,
+    "concurrency": 8,
+    "success": 24,
+    "errors": 0,
+    "successRate": 1,
+    "errorRate": 0,
+    "sloMs": 500,
+    "withinSloRate": 0,
+    "p95Ms": 827.8089000000002,
+    "avgMs": 818.2613791666666,
+    "wallClockMs": 2457.2932,
+    "errorNames": {}
+  },
+  "r1": {
+    "name": "r1",
+    "resilienceEnabled": true,
+    "fault": true,
+    "requests": 24,
+    "concurrency": 8,
+    "success": 0,
+    "errors": 24,
+    "successRate": 0,
+    "errorRate": 1,
+    "sloMs": 500,
+    "withinSloRate": 1,
+    "p95Ms": 310.6314000000002,
+    "avgMs": 127.73978749999996,
+    "wallClockMs": 616.4010000000007,
+    "errorNames": {
+      "HotelTimeoutError": 10,
+      "CircuitOpenError": 14
+    }
+  },
+  "comparison": {
+    "p95DeltaPct": -62.475469881998116,
+    "successRateDeltaPp": -100,
+    "withinSloDeltaPp": 100,
+    "wallClockDeltaPct": -74.91544761528658,
+    "hypothesis": "Bajo latencia Sports→Hotel y carga concurrente fija, timeout+CB mejoran el cumplimiento de presupuesto/saturación respecto a R0; se reporta el efecto sobre éxito de negocio.",
+    "conclusion": "Hipótesis PARCIALMENTE SOSTENIDA: R1 reduce saturación/p95/cumplimiento SLO vs R0, con trade-off en éxitos de negocio (fail-fast).",
+    "diagnosis": {
+      "observation": "Timeout/CB ante latencia artificial en dependencia SALUDABLE convierte éxitos lentos en errores rápidos.",
+      "proposedFix": "Añadir fallback degradado o reintento idempotente con presupuesto, o limitar el experimento a fallos de Hotel (5xx) donde CB evita cascadas sin sacrificar éxitos sanos."
+    }
+  },
+  "generatedAt": "2026-11-16T23:23:38.820Z"
+}
