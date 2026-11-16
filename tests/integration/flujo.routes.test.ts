@@ -26,6 +26,8 @@ import { flujoRoutes } from "../../src/routes/v2/flujo.routes";
 describe("Pruebas de flujo V2", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.OBJECT_STORAGE_API_URL = "http://object-storage.test";
+    process.env.FLUJO_ORCHESTRATION_MODE = "sequential";
   });
 
   it("debe devolver 400 si los identificadores no son enteros", async () => {

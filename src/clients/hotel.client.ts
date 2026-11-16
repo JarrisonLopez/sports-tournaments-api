@@ -1,3 +1,7 @@
+import { SpanStatusCode, trace } from "@opentelemetry/api";
+
+import { buildOutboundTraceHeaders } from "./http-trace";
+
 export interface HabitacionRemota {
   id: number;
   numeroHabitacion: string;
@@ -6,30 +10,85 @@ export interface HabitacionRemota {
   tipoHabitacion: string;
 }
 
+export class HotelConfigError extends Error {
+  constructor() {
+    super("HOTEL_API_URL no está configurada");
+    this.name = "HotelConfigError";
+  }
+}
+
+export class HotelRequestError extends Error {
+  readonly status: number;
+
+  constructor(status: number, statusText: string) {
+    super(`Error consultando Habitación: ${status} ${statusText}`);
+    this.name = "HotelRequestError";
+    this.status = status;
+  }
+}
+
+export type HotelClientDeps = {
+  fetch?: typeof fetch;
+  env?: NodeJS.ProcessEnv;
+  /** Hook de laboratorio para inyectar latencia antes del fetch (chaos). */
+  beforeRequest?: () => Promise<void>;
+};
+
+const tracer = trace.getTracer("sports-api");
+
 export async function obtenerHabitacion(
   habitacionId: number,
   traceId: string,
+  deps: HotelClientDeps = {},
 ): Promise<HabitacionRemota> {
-  const hotelApiUrl = process.env.HOTEL_API_URL;
+  const env = deps.env ?? process.env;
+  const hotelApiUrl = env.HOTEL_API_URL;
+  const doFetch = deps.fetch ?? fetch;
 
-  if (!hotelApiUrl) {
-    throw new Error("HOTEL_API_URL no está configurada");
+  if (!hotelApiUrl || hotelApiUrl.trim() === "") {
+    throw new HotelConfigError();
   }
 
-  const response = await fetch(
-    `${hotelApiUrl}/api/v2/habitacion/${habitacionId}`,
+  const baseUrl = hotelApiUrl.trim().replace(/\/+$/, "");
+  const url = `${baseUrl}/api/v2/habitacion/${habitacionId}`;
+
+  return tracer.startActiveSpan(
+    "hotel.get_habitacion",
     {
-      headers: {
-        "x-trace-id": traceId,
+      attributes: {
+        "peer.service": "hotel-api",
+        "http.method": "GET",
+        "url.full": url,
+        "sports.trace_id": traceId,
       },
     },
+    async (span) => {
+      try {
+        if (deps.beforeRequest) {
+          await deps.beforeRequest();
+        }
+
+        const response = await doFetch(url, {
+          headers: buildOutboundTraceHeaders(traceId),
+        });
+
+        span.setAttribute("http.status_code", response.status);
+
+        if (!response.ok) {
+          throw new HotelRequestError(response.status, response.statusText);
+        }
+
+        return (await response.json()) as HabitacionRemota;
+      } catch (error) {
+        span.recordException(error as Error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: error instanceof Error ? error.message : "hotel error",
+        });
+        throw error;
+      } finally {
+        span.end();
+      }
+    },
   );
-
-  if (!response.ok) {
-    throw new Error(
-      `Error consultando Habitación: ${response.status} ${response.statusText}`,
-    );
-  }
-
-  return (await response.json()) as HabitacionRemota;
 }
