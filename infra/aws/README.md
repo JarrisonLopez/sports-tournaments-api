@@ -2,7 +2,7 @@
 
 ## Justificación
 
-**k3s en una EC2 `t3.medium` (4 GiB)** frente a EKS: costo bajo, Kubernetes real (Deployment ×2, Service NodePort 30080, probes, resources, MySQL + PVC). `t3.small` (2 GiB) queda justo para k3s + MySQL + 2 réplicas.
+**k3s en una EC2 `t3.medium` (4 GiB) en `us-east-2`** frente a EKS: costo bajo, Kubernetes real (Deployment ×2, Service NodePort 30080, probes, resources, MySQL + PVC). Perfil AWS: `sports-chaos`.
 
 ## Recursos Terraform (plan)
 

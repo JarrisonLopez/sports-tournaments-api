@@ -1,8 +1,12 @@
-aws_region         = "us-east-1"
+aws_region         = "us-east-2"
+# Preferir "" + with-aws-creds.ps1 (aws login). Opcional: perfil con credential_process.
+aws_profile        = ""
 environment        = "lab"
 project_name       = "sports-chaos"
 instance_type      = "t3.medium"
+# Restringir a tu IP pública/32 (ej. 203.0.113.10/32). No usar 0.0.0.0/0.
 ssh_ingress_cidr   = "x.x.x.x/32"
 api_ingress_cidr   = "0.0.0.0/0"
-key_name           = "tu-keypair"
+# Crear antes con: .\infra\aws\scripts\create-keypair.ps1
+key_name           = "sports-chaos-k3s"
 create_elastic_ip  = true

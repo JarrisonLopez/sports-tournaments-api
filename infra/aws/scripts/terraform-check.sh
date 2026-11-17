@@ -20,13 +20,14 @@ if [[ -f terraform.tfvars ]]; then
 else
   echo "AVISO: sin terraform.tfvars; generando placeholders temporales."
   cat > terraform.tfvars.plancheck <<'EOF'
-aws_region         = "us-east-1"
+aws_region         = "us-east-2"
+aws_profile        = "sports-chaos"
 environment        = "lab"
 project_name       = "sports-chaos"
 instance_type      = "t3.medium"
 ssh_ingress_cidr   = "127.0.0.1/32"
 api_ingress_cidr   = "0.0.0.0/0"
-key_name           = ""
+key_name           = "sports-chaos-k3s"
 create_elastic_ip  = true
 EOF
   VARFILE=terraform.tfvars.plancheck

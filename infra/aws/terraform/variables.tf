@@ -1,7 +1,13 @@
 variable "aws_region" {
   type        = string
-  description = "Región AWS del laboratorio."
-  default     = "us-east-1"
+  description = "Región AWS del proyecto (Open Horizons → us-east-2)."
+  default     = "us-east-2"
+}
+
+variable "aws_profile" {
+  type        = string
+  description = "Perfil AWS CLI/SDK (credenciales temporales via aws login)."
+  default     = "sports-chaos"
 }
 
 variable "environment" {

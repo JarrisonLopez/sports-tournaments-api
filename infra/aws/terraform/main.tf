@@ -2,14 +2,25 @@ data "aws_ami" "al2023" {
   most_recent = true
   owners      = ["amazon"]
 
+  # Estándar AL2023 (excluye variantes ECS/neuron: al2023-ami-ecs-*).
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["al2023-ami-2023.*-kernel-*-x86_64"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
   }
 
   filter {
     name   = "virtualization-type"
     values = ["hvm"]
+  }
+
+  filter {
+    name   = "root-device-type"
+    values = ["ebs"]
   }
 }
 
@@ -100,10 +111,28 @@ resource "aws_instance" "k3s" {
   root_block_device {
     volume_size = 30
     volume_type = "gp3"
+    encrypted   = true
+  }
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
   }
 
   tags = {
     Name = "${var.project_name}-k3s"
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.key_name != ""
+      error_message = "Definir key_name en terraform.tfvars (crear con infra/aws/scripts/create-keypair.ps1)."
+    }
+    precondition {
+      condition     = var.ssh_ingress_cidr != "0.0.0.0/0"
+      error_message = "Restringir ssh_ingress_cidr a tu IP/32 (no 0.0.0.0/0)."
+    }
   }
 }
 

@@ -45,7 +45,7 @@ if ($okAws) {
   if (-not $region) {
     try { $region = (& $awsCmd configure get region 2>$null) } catch { $region = "" }
   }
-  if (-not $region) { $region = "(no configurada; Terraform default us-east-1)" }
+  if (-not $region) { $region = "(no configurada; Terraform default us-east-2)" }
   Write-Host "region=$region"
 
   Write-Host "`n--- EC2 instancias etiquetadas sports (readonly) ---"
