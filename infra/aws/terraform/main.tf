@@ -37,7 +37,7 @@ data "aws_subnets" "default" {
 
 resource "aws_security_group" "k3s" {
   name        = "${var.project_name}-k3s"
-  description = "Sports API k3s lab — SSH, API NodePort, k3s API"
+  description = "Sports API k3s lab - SSH, API NodePort, k3s API"
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
@@ -88,13 +88,12 @@ locals {
   user_data = <<-EOF
     #!/bin/bash
     set -euxo pipefail
-    dnf update -y || true
-    dnf install -y curl tar gzip container-selinux iptables
-    # k3s incluye containerd; sin Traefik (exponemos NodePort 30080).
-    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --write-kubeconfig-mode 644 --disable traefik" sh -
+    # AL2023 ya trae curl-minimal; no instalar paquete curl (conflicto).
+    dnf install -y tar gzip container-selinux iptables || true
+    curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644 --disable traefik
     mkdir -p /opt/sports/images /opt/sports/manifests
     ln -sfn /usr/local/bin/kubectl /usr/bin/kubectl || true
-    echo "k3s ready $(date -Is)" > /opt/sports/bootstrap.status
+    echo "k3s ready $$(date -Is)" > /opt/sports/bootstrap.status
     systemctl is-active k3s
   EOF
 }

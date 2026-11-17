@@ -20,12 +20,14 @@ $aws = if (Get-Command aws -ErrorAction SilentlyContinue) { "aws" } else {
   (Resolve-Path (Join-Path $PSScriptRoot "..\.tools\aws-cli\Amazon\AWSCLIV2\aws.exe")).Path
 }
 
-$existing = & $aws ec2 describe-key-pairs --key-names $KeyName 2>$null
-if ($LASTEXITCODE -eq 0) {
+$ErrorActionPreference = "Continue"
+$existingJson = & $aws ec2 describe-key-pairs --key-names $KeyName --output json 2>$null
+if ($LASTEXITCODE -eq 0 -and $existingJson) {
   Write-Host "Key pair '$KeyName' ya existe en $Region. No se regenera (AWS no reexpone el .pem)."
   Write-Host "Si perdiste el .pem, elimina el key pair en consola y vuelve a ejecutar este script."
   exit 0
 }
+$ErrorActionPreference = "Stop"
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $pemPath = Join-Path $OutDir "$KeyName.pem"

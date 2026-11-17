@@ -24,8 +24,8 @@ variable "project_name" {
 
 variable "instance_type" {
   type        = string
-  description = "Tipo EC2. t3.medium (4 GiB) recomendado para k3s + 2 réplicas Sports + MySQL lab; t3.small (2 GiB) queda justo."
-  default     = "t3.medium"
+  description = "Tipo EC2 Free Tier eligible. c7i-flex.large (4 GiB) para k3s+MySQL+2 réplicas; t3.small (2 GiB) si hace falta ahorrar."
+  default     = "c7i-flex.large"
 }
 
 variable "ssh_ingress_cidr" {
