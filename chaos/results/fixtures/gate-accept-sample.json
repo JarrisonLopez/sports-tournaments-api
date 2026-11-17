@@ -1,0 +1,19 @@
+{
+  "baseline": {
+    "p95SuccessMs": 50,
+    "successRate": 1,
+    "withinSloOfTotal": 1
+  },
+  "r0": {
+    "p95SuccessMs": 820,
+    "successRate": 1,
+    "withinSloOfTotal": 0,
+    "errors": 0
+  },
+  "r1": {
+    "p95SuccessMs": 320,
+    "successRate": 1,
+    "withinSloOfTotal": 0.9,
+    "errors": 0
+  }
+}

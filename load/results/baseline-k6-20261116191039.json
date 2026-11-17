@@ -1,0 +1,40 @@
+{
+  "runId": "k6-20261116191039",
+  "round": "baseline",
+  "generatedAt": "2026-11-17T00:11:55.193Z",
+  "profile": {
+    "stages": [
+      {
+        "duration": "15s",
+        "target": 2
+      },
+      {
+        "duration": "45s",
+        "target": 4
+      },
+      {
+        "duration": "15s",
+        "target": 0
+      }
+    ],
+    "thresholds": {
+      "http_req_failed": [
+        "rate<0.95"
+      ],
+      "http_req_duration": [
+        "p(95)<15000"
+      ],
+      "flujo_success": [
+        "rate>0.05"
+      ]
+    }
+  },
+  "metrics": {
+    "http_req_duration_p95": 11.3301,
+    "http_req_failed_rate": 0,
+    "flujo_success_rate": 1,
+    "iterations": 511,
+    "checks_passed": 511,
+    "checks_failed": 0
+  }
+}

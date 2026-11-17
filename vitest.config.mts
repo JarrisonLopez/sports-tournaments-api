@@ -2,6 +2,8 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // Evita contaminación del SDK OTel global entre archivos de integración.
+    fileParallelism: false,
     exclude: [
       "**/node_modules/**",
       "**/dist/**",

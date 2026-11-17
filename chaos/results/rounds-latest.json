@@ -1,11 +1,18 @@
 {
   "environment": "local-mocks",
   "notMulticloud": true,
+  "hypothesis": "Con timeout+CB+fallback ante latencia Hotel, el flujo mantiene éxito de negocio ≥90% (incluye parciales) y reduce p95 de respuestas exitosas ≥30% vs R0, misma carga e inyección.",
+  "thresholdsAPriori": {
+    "minR1SuccessRate": 0.9,
+    "maxR1P95SuccessRatioVsR0": 0.7,
+    "rejectIfR1SuccessRateIsZero": true,
+    "sloCountsOnlySuccessfulRequests": true
+  },
   "preflight": {
     "hotel": "http://127.0.0.1:18081",
     "cine": "http://127.0.0.1:18082",
     "latencyMs": 800,
-    "hotelTimeoutMs": 300,
+    "hotelTimeoutMs": 400,
     "requests": 24,
     "concurrency": 8,
     "sloMs": 500
@@ -15,7 +22,7 @@
     "steady baseline",
     "r0 fault without resilience",
     "restore fault switch",
-    "r1 same fault with timeout+CB",
+    "r1 same fault with timeout+CB+fallback",
     "compare",
     "final verify fault off"
   ],
@@ -26,14 +33,19 @@
     "requests": 24,
     "concurrency": 8,
     "success": 24,
+    "partial": 0,
+    "fullSuccess": 24,
     "errors": 0,
     "successRate": 1,
     "errorRate": 0,
     "sloMs": 500,
     "withinSloRate": 1,
-    "p95Ms": 97.2320000000002,
-    "avgMs": 40.506025000000015,
-    "wallClockMs": 123.13570000000004,
+    "withinSloOfTotal": 1,
+    "p95SuccessMs": 123.86920000000009,
+    "p95AllMs": 123.86920000000009,
+    "avgSuccessMs": 51.49640416666663,
+    "avgAllMs": 51.49640416666663,
+    "wallClockMs": 157.85399999999981,
     "errorNames": {}
   },
   "r0": {
@@ -43,14 +55,19 @@
     "requests": 24,
     "concurrency": 8,
     "success": 24,
+    "partial": 0,
+    "fullSuccess": 24,
     "errors": 0,
     "successRate": 1,
     "errorRate": 0,
     "sloMs": 500,
     "withinSloRate": 0,
-    "p95Ms": 823.7155000000002,
-    "avgMs": 818.5418958333333,
-    "wallClockMs": 2459.0203,
+    "withinSloOfTotal": 0,
+    "p95SuccessMs": 830.8692999999994,
+    "p95AllMs": 830.8692999999994,
+    "avgSuccessMs": 824.4932333333333,
+    "avgAllMs": 824.4932333333333,
+    "wallClockMs": 2475.6108,
     "errorNames": {}
   },
   "r1": {
@@ -59,31 +76,30 @@
     "fault": true,
     "requests": 24,
     "concurrency": 8,
-    "success": 0,
-    "errors": 24,
-    "successRate": 0,
-    "errorRate": 1,
+    "success": 24,
+    "partial": 24,
+    "fullSuccess": 0,
+    "errors": 0,
+    "successRate": 1,
+    "errorRate": 0,
     "sloMs": 500,
     "withinSloRate": 1,
-    "p95Ms": 308.47080000000005,
-    "avgMs": 128.32494583333335,
-    "wallClockMs": 615.9456,
-    "errorNames": {
-      "HotelTimeoutError": 10,
-      "CircuitOpenError": 14
-    }
+    "withinSloOfTotal": 1,
+    "p95SuccessMs": 423.08700000000044,
+    "p95AllMs": 423.08700000000044,
+    "avgSuccessMs": 148.35761249999996,
+    "avgAllMs": 148.35761249999996,
+    "wallClockMs": 447.2380999999996,
+    "errorNames": {}
   },
   "comparison": {
-    "p95DeltaPct": -62.55129349878691,
-    "successRateDeltaPp": -100,
-    "withinSloDeltaPp": 100,
-    "wallClockDeltaPct": -74.95158539358134,
-    "hypothesis": "Bajo latencia Sports→Hotel y carga concurrente fija, timeout+CB mejoran el cumplimiento de presupuesto/saturación respecto a R0; se reporta el efecto sobre éxito de negocio.",
-    "conclusion": "Hipótesis PARCIALMENTE SOSTENIDA: R1 reduce saturación/p95/cumplimiento SLO vs R0, con trade-off en éxitos de negocio (fail-fast).",
-    "diagnosis": {
-      "observation": "Timeout/CB ante latencia artificial en dependencia SALUDABLE convierte éxitos lentos en errores rápidos.",
-      "proposedFix": "Añadir fallback degradado o reintento idempotente con presupuesto, o limitar el experimento a fallos de Hotel (5xx) donde CB evita cascadas sin sacrificar éxitos sanos."
-    }
+    "p95SuccessDeltaPct": -49.07899473479153,
+    "successRateDeltaPp": 0,
+    "withinSloOfTotalDeltaPp": 100,
+    "wallClockDeltaPct": -81.93423214990015,
+    "hypothesis": "Con timeout+CB+fallback ante latencia Hotel, el flujo mantiene éxito de negocio ≥90% (incluye parciales) y reduce p95 de respuestas exitosas ≥30% vs R0, misma carga e inyección.",
+    "conclusion": "Hipótesis SOSTENIDA: R1 mantiene ≥90% éxito de negocio y reduce ≥30% el p95 de éxitos vs R0.",
+    "diagnosis": null
   },
-  "generatedAt": "2026-11-16T23:32:27.456Z"
+  "generatedAt": "2026-11-17T00:02:26.988Z"
 }

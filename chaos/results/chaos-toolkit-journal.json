@@ -1,0 +1,326 @@
+{
+  "chaoslib-version": "1.45.1",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "node": "Jarrison-Lopez",
+  "experiment": {
+    "version": "1.0.0",
+    "title": "Inject controlled latency from Sports to Hotel",
+    "description": "Hipótesis: el interruptor de latencia Sports→Hotel se activa, permanece medible y se revierte a enabled=false (abort si health/live o probes fallan).",
+    "tags": [
+      "sports",
+      "hotel",
+      "latency",
+      "seguimiento-4"
+    ],
+    "configuration": {
+      "sports_base_url": {
+        "type": "env",
+        "key": "SPORTS_BASE_URL",
+        "default": "http://127.0.0.1:8080"
+      },
+      "chaos_token": {
+        "type": "env",
+        "key": "CHAOS_FAULT_TOKEN",
+        "default": "chaos-lab-token-minimo-32-chars!!"
+      },
+      "latency_ms": {
+        "type": "env",
+        "key": "CHAOS_HOTEL_LATENCY_MS",
+        "default": "800"
+      },
+      "ttl_ms": {
+        "type": "env",
+        "key": "CHAOS_HOTEL_LATENCY_TTL_MS",
+        "default": "90000"
+      }
+    },
+    "steady-state-hypothesis": {
+      "title": "Sports live and hotel latency fault off",
+      "probes": [
+        {
+          "type": "probe",
+          "name": "sports-live",
+          "tolerance": 200,
+          "provider": {
+            "type": "http",
+            "url": "${sports_base_url}/health/live",
+            "timeout": 5
+          }
+        },
+        {
+          "type": "probe",
+          "name": "fault-off",
+          "tolerance": 0,
+          "provider": {
+            "type": "process",
+            "path": "node",
+            "arguments": [
+              "scripts/chaos/probe_fault_state.mjs",
+              "expect=false"
+            ],
+            "timeout": 10
+          }
+        }
+      ]
+    },
+    "method": [
+      {
+        "type": "action",
+        "name": "activate-hotel-latency",
+        "provider": {
+          "type": "http",
+          "url": "${sports_base_url}/chaos/hotel-latency",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "arguments": {
+            "token": "${chaos_token}",
+            "latencyMs": "${latency_ms}",
+            "ttlMs": "${ttl_ms}"
+          }
+        },
+        "pauses": {
+          "after": 2
+        }
+      },
+      {
+        "type": "probe",
+        "name": "fault-on",
+        "tolerance": 0,
+        "provider": {
+          "type": "process",
+          "path": "node",
+          "arguments": [
+            "scripts/chaos/probe_fault_state.mjs",
+            "expect=true"
+          ],
+          "timeout": 10
+        }
+      }
+    ],
+    "rollbacks": [
+      {
+        "type": "action",
+        "name": "deactivate-hotel-latency",
+        "provider": {
+          "type": "http",
+          "url": "${sports_base_url}/chaos/hotel-latency",
+          "method": "DELETE",
+          "headers": {
+            "x-chaos-token": "${chaos_token}"
+          }
+        }
+      },
+      {
+        "type": "probe",
+        "name": "verify-off",
+        "tolerance": 0,
+        "provider": {
+          "type": "process",
+          "path": "node",
+          "arguments": [
+            "scripts/chaos/probe_fault_state.mjs",
+            "expect=false"
+          ],
+          "timeout": 10
+        }
+      }
+    ],
+    "dry": null
+  },
+  "start": "2026-11-17T00:08:20.603167+00:00",
+  "status": "completed",
+  "deviated": false,
+  "steady_states": {
+    "before": {
+      "steady_state_met": true,
+      "probes": [
+        {
+          "activity": {
+            "type": "probe",
+            "name": "sports-live",
+            "tolerance": 200,
+            "provider": {
+              "type": "http",
+              "url": "${sports_base_url}/health/live",
+              "timeout": 5
+            }
+          },
+          "output": {
+            "status": 200,
+            "headers": {
+              "content-type": "application/json; charset=utf-8",
+              "x-api-version": "4.1.1",
+              "x-api-track": "lab",
+              "content-length": "15",
+              "Date": "Tue, 17 Nov 2026 00:08:20 GMT",
+              "Connection": "keep-alive",
+              "Keep-Alive": "timeout=72"
+            },
+            "body": "{\"status\":\"ok\"}"
+          },
+          "start": "2026-11-17T00:08:20.604017+00:00",
+          "status": "succeeded",
+          "end": "2026-11-17T00:08:20.610905+00:00",
+          "duration": 0.006888,
+          "tolerance_met": true
+        },
+        {
+          "activity": {
+            "type": "probe",
+            "name": "fault-off",
+            "tolerance": 0,
+            "provider": {
+              "type": "process",
+              "path": "node",
+              "arguments": [
+                "scripts/chaos/probe_fault_state.mjs",
+                "expect=false"
+              ],
+              "timeout": 10
+            }
+          },
+          "output": {
+            "status": 0,
+            "stdout": "{\"ok\":true,\"expectEnabled\":false,\"state\":{\"enabled\":false,\"latencyMs\":0,\"expiresAt\":null,\"activatedAt\":null,\"tokenConfigured\":true}}\n",
+            "stderr": ""
+          },
+          "start": "2026-11-17T00:08:20.611469+00:00",
+          "status": "succeeded",
+          "end": "2026-11-17T00:08:20.912360+00:00",
+          "duration": 0.300891,
+          "tolerance_met": true
+        }
+      ]
+    },
+    "after": null,
+    "during": []
+  },
+  "run": [
+    {
+      "activity": {
+        "type": "action",
+        "name": "activate-hotel-latency",
+        "provider": {
+          "type": "http",
+          "url": "${sports_base_url}/chaos/hotel-latency",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "arguments": {
+            "token": "${chaos_token}",
+            "latencyMs": "${latency_ms}",
+            "ttlMs": "${ttl_ms}"
+          }
+        },
+        "pauses": {
+          "after": 2
+        }
+      },
+      "output": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "x-api-version": "4.1.1",
+          "x-api-track": "lab",
+          "content-length": "109",
+          "Date": "Tue, 17 Nov 2026 00:08:20 GMT",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=72"
+        },
+        "body": "{\"enabled\":true,\"latencyMs\":800,\"expiresAt\":1794874190905,\"activatedAt\":1794874100905,\"tokenConfigured\":true}"
+      },
+      "start": "2026-11-17T00:08:20.913349+00:00",
+      "status": "succeeded",
+      "end": "2026-11-17T00:08:20.921353+00:00",
+      "duration": 0.008004
+    },
+    {
+      "activity": {
+        "type": "probe",
+        "name": "fault-on",
+        "tolerance": 0,
+        "provider": {
+          "type": "process",
+          "path": "node",
+          "arguments": [
+            "scripts/chaos/probe_fault_state.mjs",
+            "expect=true"
+          ],
+          "timeout": 10
+        }
+      },
+      "output": {
+        "status": 0,
+        "stdout": "{\"ok\":true,\"expectEnabled\":true,\"state\":{\"enabled\":true,\"latencyMs\":800,\"expiresAt\":1794874190905,\"activatedAt\":1794874100905,\"tokenConfigured\":true}}\n",
+        "stderr": ""
+      },
+      "start": "2026-11-17T00:08:22.922694+00:00",
+      "status": "succeeded",
+      "end": "2026-11-17T00:08:23.262736+00:00",
+      "duration": 0.340042
+    }
+  ],
+  "rollbacks": [
+    {
+      "activity": {
+        "type": "action",
+        "name": "deactivate-hotel-latency",
+        "provider": {
+          "type": "http",
+          "url": "${sports_base_url}/chaos/hotel-latency",
+          "method": "DELETE",
+          "headers": {
+            "x-chaos-token": "${chaos_token}"
+          }
+        }
+      },
+      "output": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "x-api-version": "4.1.1",
+          "x-api-track": "lab",
+          "content-length": "90",
+          "Date": "Tue, 17 Nov 2026 00:08:23 GMT",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=72"
+        },
+        "body": "{\"enabled\":false,\"latencyMs\":0,\"expiresAt\":null,\"activatedAt\":null,\"tokenConfigured\":true}"
+      },
+      "start": "2026-11-17T00:08:23.263336+00:00",
+      "status": "succeeded",
+      "end": "2026-11-17T00:08:23.269397+00:00",
+      "duration": 0.006061
+    },
+    {
+      "activity": {
+        "type": "probe",
+        "name": "verify-off",
+        "tolerance": 0,
+        "provider": {
+          "type": "process",
+          "path": "node",
+          "arguments": [
+            "scripts/chaos/probe_fault_state.mjs",
+            "expect=false"
+          ],
+          "timeout": 10
+        }
+      },
+      "output": {
+        "status": 0,
+        "stdout": "{\"ok\":true,\"expectEnabled\":false,\"state\":{\"enabled\":false,\"latencyMs\":0,\"expiresAt\":null,\"activatedAt\":null,\"tokenConfigured\":true}}\n",
+        "stderr": ""
+      },
+      "start": "2026-11-17T00:08:23.269958+00:00",
+      "status": "succeeded",
+      "end": "2026-11-17T00:08:23.605102+00:00",
+      "duration": 0.335144
+    }
+  ],
+  "end": "2026-11-17T00:08:23.605361+00:00",
+  "duration": 3.0022144317626953
+}

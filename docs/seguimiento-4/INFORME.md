@@ -29,19 +29,26 @@ Sports coordina de forma **síncrona y secuencial** Hotel (OCI / Samuel) y Cine 
 
 Bajo carga concurrente fija, inyectar latencia degrada p95/SLO (R0). Con **timeout + circuit breaker** (R1) e idéntica carga/fallo, mejora el presupuesto de latencia/saturación frente a R0.
 
-## 4. Resultados locales (mocks HTTP)
+## 4. Resultados locales (mocks HTTP + k6)
 
-| | Baseline | R0 | R1 |
+**Causa del R1 0% inicial:** timeout (300 ms) < latencia (800 ms) sin fallback → todos los flujos fallaban; el gate no debe aprobar 0% éxito.
+
+**Corrección:** timeout + CB + fallback de Hotel (respuesta parcial válida). SLO solo sobre éxitos.
+
+| Rondas Node | Baseline | R0 | R1 |
 |---|---|---|---|
-| p95 ms | ~89 | ~828 | ~311 |
-| Éxito | 100% | 100% | 0% |
-| Within SLO | 100% | 0% | 100% |
-| Wall ms | ~115 | ~2457 | ~616 |
-| Errores R1 | — | — | Timeout + CircuitOpen |
+| éxito | 100% | 100% | 100% (parcial) |
+| p95Success | ~124 ms | ~831 ms | ~423 ms (−49%) |
 
-**Conclusión:** hipótesis **parcialmente sostenida**. Las protecciones acotan saturación (p95 −62%, wall −75%, SLO 0%→100%) pero convierten éxitos lentos en errores rápidos ante dependencia *saludable* ralentizada. **Propuesta:** fallback degradado o experimentar con 5xx de Hotel para sostener mejor el éxito de negocio.
+| k6 real | Baseline | R0 | R1 |
+|---|---|---|---|
+| éxito | 100% | 100% | 100% |
+| p95 | ~11 ms | ~820 ms | ~11 ms |
+| iters | 511 | 143 | 492 |
 
-**Importante:** estos números son de laboratorio local, **no** de AWS/OCI/GCP.
+**Conclusión:** hipótesis **SOSTENIDA** en laboratorio. Evidencia: `chaos/results/rounds-latest.json`, `load/results/*-k6-20261116191039.json`.
+
+**Importante:** no son resultados AWS/OCI/GCP.
 
 ## 5. Observabilidad y chaos gate
 

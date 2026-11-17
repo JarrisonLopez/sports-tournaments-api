@@ -1,0 +1,181 @@
+{
+    "root_group": {
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+            "status is 200": {
+                "name": "status is 200",
+                "path": "::status is 200",
+                "id": "6210a8cd14cd70477eba5c5e4cb3fb5f",
+                "passes": 143,
+                "fails": 0
+            }
+        },
+        "name": "",
+        "path": ""
+    },
+    "metrics": {
+        "http_req_blocked": {
+            "max": 2.3187,
+            "avg": 0.04152727272727273,
+            "min": 0,
+            "med": 0,
+            "p(95)": 0,
+            "p(99)": 1.234680000000001
+        },
+        "flujo_success": {
+            "passes": 143,
+            "fails": 0,
+            "thresholds": {
+                "rate>0.05": false
+            },
+            "value": 1
+        },
+        "data_received": {
+            "count": 103464,
+            "rate": 1370.2102326337115
+        },
+        "http_req_tls_handshaking": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "p(95)": 0,
+            "p(99)": 0,
+            "max": 0
+        },
+        "http_req_receiving": {
+            "avg": 2.337565734265735,
+            "min": 0,
+            "med": 1.3789,
+            "p(95)": 7.25727,
+            "p(99)": 8.107540000000002,
+            "max": 9.1697
+        },
+        "http_req_connecting": {
+            "avg": 0.03907832167832168,
+            "min": 0,
+            "med": 0,
+            "p(95)": 0,
+            "p(99)": 1.234680000000001,
+            "max": 2.3187
+        },
+        "iterations": {
+            "count": 143,
+            "rate": 1.8937994207320492
+        },
+        "vus": {
+            "value": 1,
+            "min": 0,
+            "max": 4
+        },
+        "http_req_sending": {
+            "max": 0.5929,
+            "avg": 0.02141118881118881,
+            "min": 0,
+            "med": 0,
+            "p(95)": 0,
+            "p(99)": 0.5657660000000002
+        },
+        "checks": {
+            "passes": 143,
+            "fails": 0,
+            "value": 1
+        },
+        "flujo_duration_ms": {
+            "p(99)": 824.03061,
+            "max": 825.3745,
+            "avg": 813.3152020979021,
+            "min": 803.2179,
+            "med": 813.1276,
+            "p(95)": 819.8463399999999
+        },
+        "http_req_waiting": {
+            "med": 811.2463,
+            "p(95)": 818.16266,
+            "p(99)": 821.070854,
+            "max": 822.3537,
+            "avg": 810.956225174825,
+            "min": 801.4742
+        },
+        "iteration_duration": {
+            "med": 1114.7711,
+            "p(95)": 1120.98263,
+            "p(99)": 1125.5575820000001,
+            "max": 1139.9185,
+            "avg": 1115.2099258741262,
+            "min": 1107.7836
+        },
+        "http_reqs": {
+            "count": 143,
+            "rate": 1.8937994207320492
+        },
+        "http_req_duration": {
+            "med": 813.1276,
+            "p(95)": 819.8463399999999,
+            "p(99)": 824.03061,
+            "max": 825.3745,
+            "avg": 813.3152020979021,
+            "min": 803.2179,
+            "thresholds": {
+                "p(95)<15000": false
+            }
+        },
+        "data_sent": {
+            "count": 25849,
+            "rate": 342.32742116435486
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 143,
+            "thresholds": {
+                "rate<0.95": false
+            },
+            "value": 0
+        },
+        "vus_max": {
+            "max": 4,
+            "value": 4,
+            "min": 4
+        },
+        "http_req_duration{expected_response:true}": {
+            "max": 825.3745,
+            "avg": 813.3152020979021,
+            "min": 803.2179,
+            "med": 813.1276,
+            "p(95)": 819.8463399999999,
+            "p(99)": 824.03061
+        }
+    },
+    "setup_data": {
+        "round": "r0",
+        "runId": "k6-20261116191039",
+        "profile": {
+            "endpoint": "http://127.0.0.1:8080/api/v2/flujo/1/1/1",
+            "stages": [
+                {
+                    "duration": "15s",
+                    "target": 2
+                },
+                {
+                    "duration": "45s",
+                    "target": 4
+                },
+                {
+                    "duration": "15s",
+                    "target": 0
+                }
+            ],
+            "thresholds": {
+                "flujo_success": [
+                    "rate>0.05"
+                ],
+                "http_req_duration": [
+                    "p(95)<15000"
+                ],
+                "http_req_failed": [
+                    "rate<0.95"
+                ]
+            }
+        }
+    }
+}

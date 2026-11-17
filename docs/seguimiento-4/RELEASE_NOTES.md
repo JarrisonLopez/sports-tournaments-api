@@ -1,16 +1,15 @@
-# v4.1.0 — Seguimiento #4 Chaos Engineering (AWS)
+# v4.1.1 — Seguimiento #4 (validación y resiliencia real)
 
-## Highlights
+## Fixes / mejoras sobre v4.1.0
 
-- Orquestación multicloud **secuencial** Hotel → Cine con tracing.
-- Infra **k3s/EC2** + manifiestos K8s (2 réplicas, probes, resources).
-- Interruptor de latencia Sports→Hotel + experimento Chaos Toolkit/runner.
-- **Timeout** y **circuit breaker** conmutables vía `RESILIENCE_ENABLED`.
-- Perfil **k6** fijo reproducible.
-- Chaos gate CI con R0/R1 sobre mocks HTTP.
-- Evidencia local en `chaos/results/rounds-latest.json`.
+- Fallback de Hotel + `status: partial` (corrige R1 0% éxito).
+- Gate rechaza éxito 0%; fixtures accept/reject.
+- Chaos Toolkit ejecutado de verdad (`chaos-toolkit-journal.json`).
+- k6 real Baseline/R0/R1 (`load/results/*-k6-20261116191039.json`).
+- Lab server sin MySQL para demos locales.
+- Vitest `fileParallelism: false` (estabilidad OTel).
 
 ## Notas
 
-- Despliegue AWS no incluido en esta release hasta apply autorizado.
-- Integración real OCI/GCP pendiente de URLs de compañeros.
+- AWS sigue **no desplegado** (IaC + docs en `AWS_DEPLOY.md`).
+- Docker daemon / kind/k3d no disponibles en esta estación → K8s solo validación estática.
