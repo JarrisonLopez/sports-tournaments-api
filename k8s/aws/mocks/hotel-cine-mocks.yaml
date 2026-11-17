@@ -1,0 +1,146 @@
+# Mocks locales en sports-lab (NO son Hotel OCI ni Cine GCP).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lab-mocks-scripts
+  namespace: sports-lab
+data:
+  hotel-mock.js: |
+    const http = require("node:http");
+    const port = Number(process.env.PORT || 8081);
+    const delayMs = Number(process.env.HOTEL_MOCK_DELAY_MS || 0);
+    http.createServer(async (req, res) => {
+      const url = new URL(req.url || "/", `http://127.0.0.1:${port}`);
+      if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
+      if (url.pathname.startsWith("/health")) {
+        res.writeHead(200, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ status: "ok" }));
+      }
+      const m = url.pathname.match(/^\/api\/v2\/habitacion\/(\d+)$/);
+      if (req.method === "GET" && m) {
+        const id = Number(m[1]);
+        res.writeHead(200, { "content-type": "application/json" });
+        return res.end(JSON.stringify({
+          id, numeroHabitacion: String(100 + id), precioHabitacion: 100000,
+          estadoHabitacion: "disponible", tipoHabitacion: "standard"
+        }));
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ message: "not found" }));
+    }).listen(port, "0.0.0.0", () => console.log("hotel-mock on", port));
+  cine-mock.js: |
+    const http = require("node:http");
+    const port = Number(process.env.PORT || 8082);
+    http.createServer((req, res) => {
+      const url = new URL(req.url || "/", `http://127.0.0.1:${port}`);
+      if (url.pathname.startsWith("/health")) {
+        res.writeHead(200, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ status: "ok" }));
+      }
+      const m = url.pathname.match(/^\/api\/v2\/peliculas\/(\d+)$/);
+      if (req.method === "GET" && m) {
+        const id = Number(m[1]);
+        res.writeHead(200, { "content-type": "application/json" });
+        return res.end(JSON.stringify({
+          id, nombre: "Pelicula Lab", duracion: 120, genero: "accion", descripcion: "mock-lab"
+        }));
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ message: "not found" }));
+    }).listen(port, "0.0.0.0", () => console.log("cine-mock on", port));
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-mock
+  namespace: sports-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hotel-mock
+  template:
+    metadata:
+      labels:
+        app: hotel-mock
+    spec:
+      containers:
+        - name: hotel-mock
+          image: node:22-alpine
+          command: ["node", "/scripts/hotel-mock.js"]
+          ports:
+            - containerPort: 8081
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      volumes:
+        - name: scripts
+          configMap:
+            name: lab-mocks-scripts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hotel-mock
+  namespace: sports-lab
+spec:
+  selector:
+    app: hotel-mock
+  ports:
+    - port: 8081
+      targetPort: 8081
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cine-mock
+  namespace: sports-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cine-mock
+  template:
+    metadata:
+      labels:
+        app: cine-mock
+    spec:
+      containers:
+        - name: cine-mock
+          image: node:22-alpine
+          command: ["node", "/scripts/cine-mock.js"]
+          ports:
+            - containerPort: 8082
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      volumes:
+        - name: scripts
+          configMap:
+            name: lab-mocks-scripts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cine-mock
+  namespace: sports-lab
+spec:
+  selector:
+    app: cine-mock
+  ports:
+    - port: 8082
+      targetPort: 8082
