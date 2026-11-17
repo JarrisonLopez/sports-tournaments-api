@@ -5,8 +5,8 @@
 | Campo | Valor |
 |---|---|
 | Collector | `https://157.137.233.183:31443` |
-| Hostname TLS | `hotel-otel-lab` (CN del cert; sin SAN de IP) |
-| URL en pods | `https://hotel-otel-lab:31443` vía `hostAliases` |
+| Hostname TLS | SAN: `DNS:otel-lab.local`, `IP:157.137.233.183` (CN `hotel-otel-lab` no basta para Node/curl) |
+| URL en pods | `https://otel-lab.local:31443` vía `hostAliases` |
 | Protocolo | OTLP HTTP (`OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`) |
 | Trazas | `{endpoint}/v1/traces` (añadido por exporter) |
 | Métricas | `{endpoint}/v1/metrics` |
@@ -20,9 +20,10 @@ OTEL_SERVICE_NAME=sports-api
 OTEL_TRACES_EXPORTER=otlp
 OTEL_METRICS_EXPORTER=otlp
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-OTEL_EXPORTER_OTLP_ENDPOINT=https://hotel-otel-lab:31443
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otel-lab.local:31443
 OTEL_EXPORTER_OTLP_CERTIFICATE=/etc/otel/otel-lab-ca.crt
 ```
+
 
 Headers Basic **solo** en Secret `sports-otel-secrets`:
 

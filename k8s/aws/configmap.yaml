@@ -15,13 +15,14 @@ data:
   HOTEL_API_URL: "http://149.130.165.30"
   CINE_API_URL: "http://35.239.107.54"
   OBJECT_STORAGE_API_URL: ""
-  # OTLP → Collector compartido OCI (Samuel). Host hotel-otel-lab vía hostAliases del Deployment.
+  # OTLP → Collector OCI (Samuel). SAN del cert: DNS otel-lab.local + IP 157.137.233.183
+  # (CN hotel-otel-lab NO está en SAN → no usarlo como host TLS).
   # No incluir /v1/traces ni /v1/metrics: el exporter las añade.
   OTEL_SERVICE_NAME: "sports-api"
   OTEL_TRACES_EXPORTER: "otlp"
   OTEL_METRICS_EXPORTER: "otlp"
   OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
-  OTEL_EXPORTER_OTLP_ENDPOINT: "https://hotel-otel-lab:31443"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "https://otel-lab.local:31443"
   OTEL_EXPORTER_OTLP_CERTIFICATE: "/etc/otel/otel-lab-ca.crt"
   FLUJO_ORCHESTRATION_MODE: "sequential"
   HOTEL_TIMEOUT_MS: "2000"

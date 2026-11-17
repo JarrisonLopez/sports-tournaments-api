@@ -30,11 +30,11 @@ spec:
                   matchLabels:
                     app: sports-tournaments-api
                 topologyKey: kubernetes.io/hostname
-      # Cert TLS del Collector Samuel: CN=hotel-otel-lab (sin SAN de IP).
-      # Mapear el hostname al IP público para validación TLS sin desactivar verify.
+      # Cert TLS Samuel: SAN DNS=otel-lab.local, IP=157.137.233.183 (CN hotel-otel-lab no basta).
       hostAliases:
         - ip: "157.137.233.183"
           hostnames:
+            - "otel-lab.local"
             - "hotel-otel-lab"
       containers:
         - name: sports-tournaments-api

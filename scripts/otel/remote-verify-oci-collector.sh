@@ -6,7 +6,7 @@ echo "collector=$IP:$PORT"
 echo "== TCP =="
 timeout 5 bash -c "echo >/dev/tcp/$IP/$PORT" && echo tcp_ok || echo tcp_fail
 echo "== TLS leaf =="
-timeout 15 openssl s_client -connect "$IP:$PORT" -servername hotel-otel-lab </dev/null 2>/tmp/otel-tls.err \
+timeout 15 openssl s_client -connect "$IP:$PORT" -servername otel-lab.local </dev/null 2>/tmp/otel-tls.err \
   | openssl x509 -noout -subject -issuer -dates 2>/tmp/otel-x509.err || true
 echo "tls_stderr_head:"
 head -n 15 /tmp/otel-tls.err || true

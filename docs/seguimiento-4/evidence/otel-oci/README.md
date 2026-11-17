@@ -1,35 +1,32 @@
-# Evidencia OTLP Sports AWS → Collector OCI (Samuel)
+﻿# Evidencia OTLP Sports AWS → Collector OCI (cerrado)
 
-**Run ID:** `otel-oci-20261116225214`  
-**x-trace-id:** `otel-oci-20261116225214-flujo-1`  
-**otelTraceId:** `f63bd8efa28b0098ee433175369012f4`
-
-## Hallazgos
+## Resultado
 
 | Chequeo | Resultado |
 |---|---|
-| TCP `157.137.233.183:31443` desde EC2 | OK |
-| TLS leaf | `CN=hotel-otel-lab` self-signed (verify error 18 sin CA) |
-| SAN / IP | Cert **sin** IP; pods usan `hostAliases` → `hotel-otel-lab` |
-| POST `/v1/traces` sin auth | **401 Unauthorized** (Collector vivo; auth requerida) |
-| Secrets `sports-otel-secrets` / `sports-otel-ca` | **Ausentes** (pendiente Samuel) |
-| Mount `/etc/otel` | Directorio vacío (secret CA opcional aún no aplicado) |
-| `HAS_HEADERS` en pods | **no** |
-| Flujo multicloud | HTTP 200 `status=success` Hotel OCI + Cine GCP |
-| Pods Sports | **2/2 Ready** |
-| Exportación OTLP aceptada | **No confirmada** (falta token+CA; 401 ≠ export OK) |
+| Secrets `sports-otel-secrets` / `sports-otel-ca` | Creados y montados |
+| CA en pods `/etc/otel/otel-lab-ca.crt` | Presente (~1166 bytes) |
+| HAS_HEADERS | yes (ambos pods) |
+| TLS Node `otel-lab.local` + CA | **authorized=true** |
+| SAN del cert | `DNS:otel-lab.local`, `IP:157.137.233.183` |
+| POST `/v1/traces` auth+TLS | **HTTP 200** |
+| POST `/v1/metrics` auth+TLS | **HTTP 200** |
+| POST sin auth | **401** |
+| Flujo multicloud | **200 status=success** Hotel upstream + Cine database |
+| Pods | **2/2 Ready** |
+| Endpoint configurado | `https://otel-lab.local:31443` |
 
-## Pedido a compañeros
+## Trace de prueba
 
-- **Samuel:** confirmar spans `service.name=sports-api` / `otelTraceId=f63bd8efa28b0098ee433175369012f4` y entregar `otel-lab-ca.crt` + token Basic.
-- **Daniel:** confirmar continuidad `x-trace-id` / `traceparent` en Cine para la misma ejecución.
+- runId: `otel-oci-live-20261116230837`
+- x-trace-id: `otel-oci-live-20261116230837-flujo-1`
+- otelTraceId: `ad97747b16a40a3c738b6591e1f59309`
+- otelSpanId: `354377a4a5339766`
 
-## Archivos
+## Pendiente externo
 
-- `01-collector-connectivity.txt`
-- `02-flujo-multicloud.json` / `.txt`
-- `03-health-*.txt`
-- `04-flujo-logs-trace.txt`
-- `05-k8s-status.txt`
-- `06-configmap-otel.yaml`
-- `07-pods-logs-sanitized.txt`
+Samuel debe confirmar en Tempo/Grafana la recepción de `service.name=sports-api` y el `otelTraceId` anterior (Sports ya exporta con TLS+Basic OK).
+
+## Nota TLS
+
+No usar `hotel-otel-lab` como host OTLP: está en CN pero **no** en SAN. Usar `otel-lab.local`.
