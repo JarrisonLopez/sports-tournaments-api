@@ -6,6 +6,7 @@
 | `CONTRATOS_MULTICLOUD.md` | Contratos para Samuel y Daniel |
 | `OBSERVABILIDAD.md` | Métricas y OTLP |
 | `EXPERIMENTO_LATENCIA.md` | Experimento + interruptor |
+| `EXPERIMENTO_INTERCLOUD.md` | Latencia Sports→Hotel OCI (rúbrica) |
 | `RESILIENCIA.md` | Timeout y circuit breaker |
 | `RONDAS_R0_R1.md` | Procedimiento y resultados |
 | `INFORME.md` | Informe ≤6 páginas |
@@ -13,7 +14,8 @@
 | `RELEASE.md` | SemVer y publicación |
 | `evidence/aws-validation/` | Validación Sports en AWS (mocks lab) |
 | `evidence/multicloud-real/` | Integración real AWS→OCI→GCP |
-| `evidence/aws-rounds/` | Baseline / R0 / R1 medidos en k3s AWS |
+| `evidence/aws-rounds/` | Baseline / R0 / R1 medidos en k3s AWS (mocks) |
+| `evidence/aws-intercloud/` | Preparación / rondas intercloud vs Hotel OCI |
 
 ## URLs activas (lab)
 
@@ -33,6 +35,7 @@ npm test
 npm run build
 npm run chaos:rounds
 .\scripts\chaos\run_aws_rounds.ps1 -BaseUrl "http://3.21.120.51:30080"
+.\scripts\chaos\run_aws_intercloud_rounds.ps1   # dry-run; -AuthorizeIntercloud tras Samuel
 .\load\run-k6.ps1 -Round baseline   # requiere k6 o Docker
 kubectl apply --validate=false -f k8s/aws/namespace.yaml
 ```

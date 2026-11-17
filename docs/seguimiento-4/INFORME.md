@@ -74,7 +74,9 @@ Apoyo en orquestación AWS, ConfigMaps de experimento, clasificación k6 full/pa
 
 ## 9. Hallazgos, limitaciones y backlog
 
-- Fallo controlado solo vía mock Hotel; radio acotado a Sports.  
+- Fallo controlado en cliente saliente Sports→Hotel; radio acotado a Sports (no altera OCI/GCP).  
+- Rondas AWS con **mocks** ya medidas (`aws-rounds-20261116215016`).  
+- Rondas **intercloud** (Hotel OCI real) preparadas en `EXPERIMENTO_INTERCLOUD.md`; ejecución live pendiente de ventana con Samuel (`-AuthorizeIntercloud`).  
 - Estado de caos es **por pod** → armar ambas réplicas.  
 - Sin HA multi-nodo; sin backend OTLP compartido.  
-- Backlog: confirmar mismos `x-trace-id` en logs Hotel/Cine; conectar OTLP de lab; demo/sustención con esta evidencia.
+- Backlog: autorización Samuel → ejecutar intercloud; confirmar `x-trace-id` en logs Hotel/Cine; OTLP de lab; demo.

@@ -119,3 +119,4 @@ La **disponibilidad en OCI/GCP** no está verificada desde este repositorio. Has
 3. Sports actualiza ConfigMap / env con esas URLs.
 4. Se ejecuta un flujo manual con el mismo `x-trace-id` y se confirma traza en Grafana.
 5. Solo entonces se autoriza el experimento de latencia inter-nube.
+6. Ejecutar `.\scripts\chaos\run_aws_intercloud_rounds.ps1 -AuthorizeIntercloud` (ver `EXPERIMENTO_INTERCLOUD.md`).

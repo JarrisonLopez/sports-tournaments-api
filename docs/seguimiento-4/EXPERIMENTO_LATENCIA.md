@@ -28,4 +28,7 @@ Abortar si `/health/ready` ≠ 200 o la activación falla. Siempre ejecutar DELE
 
 ## AWS (2 réplicas)
 
-Con NodePort, el estado del fallo es **por proceso/pod**. Usar `scripts/chaos/aws-lab-helpers.sh arm|disarm` (o `run_aws_rounds.ps1`) para armar ambas réplicas. No inyectar fallos hacia Hotel OCI ni Cine GCP: usar `hotel-mock` vía `configmap.exp-r0.yaml` / `configmap.exp-r1.yaml` y restaurar `configmap.yaml`.
+Con NodePort, el estado del fallo es **por proceso/pod**. Usar `scripts/chaos/aws-lab-helpers.sh arm|disarm` (o `run_aws_rounds.ps1`) para armar ambas réplicas.
+
+- **Mocks (ya medido):** `configmap.exp-r0.yaml` / `configmap.exp-r1.yaml` → evidencia `aws-rounds-20261116215016`.
+- **Intercloud OCI (rúbrica):** el mismo interruptor aplica el delay en el cliente saliente hacia `HOTEL_API_URL` real. Procedimiento y gate de autorización: `EXPERIMENTO_INTERCLOUD.md` + `run_aws_intercloud_rounds.ps1`. **No armar contra OCI sin ventana con Samuel.**
