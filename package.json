@@ -12,6 +12,7 @@
     "test:coverage:production": "vitest run --coverage --config vitest.production.config.mts",
     "chaos:rounds": "node scripts/chaos/run_rounds.mjs",
     "chaos:gate": "node scripts/chaos/evaluate_gate.mjs",
+    "chaos:gate:test": "node scripts/chaos/test_evaluate_gate.mjs",
     "chaos:hotel-latency": "node scripts/chaos/run_hotel_latency_experiment.mjs",
     "chaos:verify-hotel-503": "node scripts/chaos/verify_hotel_503_local.mjs",
     "lab:mocks": "node lab/mocks/hotel-mock.mjs"

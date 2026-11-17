@@ -1,4 +1,6 @@
 {
+  "_synthetic": true,
+  "_fixturePurpose": "SYNTHETIC PASS sample for Chaos Gate unit/CI checks. Not AWS/OCI/GCP evidence.",
   "baseline": {
     "requests": 24,
     "p95SuccessMs": 50,

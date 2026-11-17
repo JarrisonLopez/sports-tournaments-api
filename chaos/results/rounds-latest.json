@@ -46,11 +46,11 @@
     "sloMs": 500,
     "withinSloRate": 1,
     "withinSloOfTotal": 1,
-    "p95SuccessMs": 83.34960000000001,
-    "p95AllMs": 83.34960000000001,
-    "avgSuccessMs": 36.142883333333344,
-    "avgAllMs": 36.142883333333344,
-    "wallClockMs": 110.1556999999998,
+    "p95SuccessMs": 85.40639999999985,
+    "p95AllMs": 85.40639999999985,
+    "avgSuccessMs": 35.94967500000005,
+    "avgAllMs": 35.94967500000005,
+    "wallClockMs": 110.64849999999979,
     "errorNames": {}
   },
   "r0": {
@@ -71,11 +71,11 @@
     "sloMs": 500,
     "withinSloRate": 0,
     "withinSloOfTotal": 0,
-    "p95SuccessMs": 822.7572,
-    "p95AllMs": 822.7572,
-    "avgSuccessMs": 819.6384333333332,
-    "avgAllMs": 819.6384333333332,
-    "wallClockMs": 2460.0441,
+    "p95SuccessMs": 822.7725999999998,
+    "p95AllMs": 822.7725999999998,
+    "avgSuccessMs": 818.0984500000001,
+    "avgAllMs": 818.0984500000001,
+    "wallClockMs": 2455.1395,
     "errorNames": {}
   },
   "r1": {
@@ -96,24 +96,24 @@
     "sloMs": 500,
     "withinSloRate": 1,
     "withinSloOfTotal": 1,
-    "p95SuccessMs": 420.08420000000024,
-    "p95AllMs": 420.08420000000024,
-    "avgSuccessMs": 144.19013750000008,
-    "avgAllMs": 144.19013750000008,
-    "wallClockMs": 433.77689999999984,
+    "p95SuccessMs": 423.78340000000026,
+    "p95AllMs": 423.78340000000026,
+    "avgSuccessMs": 149.90408333333346,
+    "avgAllMs": 149.90408333333346,
+    "wallClockMs": 451.33299999999963,
     "errorNames": {}
   },
   "comparison": {
-    "p95SuccessDeltaPct": -48.94189926262569,
+    "p95SuccessDeltaPct": -48.493253178338655,
     "availabilityDeltaPp": 0,
     "fullSuccessDeltaPp": -100,
     "partialRateR1": 1,
     "serviceLevelR1": "partial",
     "withinSloOfTotalDeltaPp": 100,
-    "wallClockDeltaPct": -82.36710878475716,
+    "wallClockDeltaPct": -81.6168083320724,
     "hypothesis": "Con timeout+CB+fallback ante latencia Hotel (misma carga e intensidad), la disponibilidad (full+partial) permanece ≥90%, el p95 de respuestas disponibles baja ≥30% vs R0, y se reporta aparte fullSuccess vs partial (parcial ≠ éxito completo).",
     "conclusion": "Hipótesis SOSTENIDA a nivel disponibilidad: R1 availability≥90% y p95≤70% de R0. Nivel de servicio R1=partial (full=0% partial=100%). Parcial no se cuenta como éxito completo.",
     "diagnosis": null
   },
-  "generatedAt": "2026-11-17T00:33:28.679Z"
+  "generatedAt": "2026-11-17T23:14:36.312Z"
 }
