@@ -1,0 +1,5 @@
+{
+    "RESILIENCE_ENABLED":  true,
+    "HOTEL_FALLBACK_ENABLED":  true,
+    "HOTEL_TIMEOUT_MS":  "2000"
+}

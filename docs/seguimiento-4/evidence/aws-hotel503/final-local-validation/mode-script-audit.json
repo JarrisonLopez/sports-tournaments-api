@@ -1,0 +1,28 @@
+{
+    "r0Config":  {
+                     "CHAOS_LAB_ENABLED":  "false",
+                     "HOTEL_API_URL":  "http://149.130.165.30",
+                     "HOTEL_FALLBACK_ENABLED":  "false",
+                     "CINE_API_URL":  "http://35.239.107.54",
+                     "RESILIENCE_ENABLED":  "false",
+                     "file":  "k8s/aws/configmap.exp-hotel503-r0.yaml"
+                 },
+    "r1Config":  {
+                     "CHAOS_LAB_ENABLED":  "false",
+                     "HOTEL_API_URL":  "http://149.130.165.30",
+                     "HOTEL_FALLBACK_ENABLED":  "true",
+                     "CINE_API_URL":  "http://35.239.107.54",
+                     "RESILIENCE_ENABLED":  "true",
+                     "file":  "k8s/aws/configmap.exp-hotel503-r1.yaml"
+                 },
+    "modeScript":  {
+                       "appliesRollout":  true,
+                       "assertsResilienceFlags":  true,
+                       "waitsReady2of2":  true,
+                       "rollbackUsesConfigmapYaml":  true,
+                       "verifiesBothPods":  true,
+                       "preservesRealEndpoints":  true
+                   },
+    "imageRebuildRequired":  false,
+    "reason":  "Fallback 5xx already in 4.1.1-ac7b0fd; script/helper changes are ops-only"
+}

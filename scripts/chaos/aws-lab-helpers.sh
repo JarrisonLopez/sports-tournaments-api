@@ -62,10 +62,13 @@ wait_ready() {
 }
 
 # Verifica variables efectivas en AMBOS pods (experimento Hotel HTTP 503).
-# Args: expect_hotel expect_cine
+# Args: expect_hotel expect_cine [expect_resilience] [expect_fallback]
+# expect_resilience/fallback opcionales: true|false — si se pasan, se exigen en ambos pods.
 verify_env_hotel503() {
   expect_hotel="${1:-149.130.165.30}"
   expect_cine="${2:-35.239.107.54}"
+  expect_res="${3:-}"
+  expect_fb="${4:-}"
   OK=0
   COUNT=0
   for p in $(sudo kubectl -n "$NS" get pods -l app=sports-tournaments-api -o jsonpath='{.items[*].metadata.name}'); do
@@ -103,6 +106,18 @@ verify_env_hotel503() {
       echo "ERROR: CHAOS_LAB_ENABLED must be false for Hotel 503 experiment (got $CHAOS on $p)" >&2
       exit 1
     }
+    if [ -n "$expect_res" ]; then
+      [ "$RES" = "$expect_res" ] || {
+        echo "ERROR: RESILIENCE_ENABLED expected=$expect_res got=$RES on $p" >&2
+        exit 1
+      }
+    fi
+    if [ -n "$expect_fb" ]; then
+      [ "$FB" = "$expect_fb" ] || {
+        echo "ERROR: HOTEL_FALLBACK_ENABLED expected=$expect_fb got=$FB on $p" >&2
+        exit 1
+      }
+    fi
     OK=$((OK + 1))
   done
   echo "verified_pods=$OK"
@@ -152,7 +167,7 @@ case "$cmd" in
   rollout) rollout ;;
   wait-ready) wait_ready ;;
   verify-env) verify_env "${2:-}" ;;
-  verify-env-hotel503) verify_env_hotel503 "${2:-149.130.165.30}" "${3:-35.239.107.54}" ;;
+  verify-env-hotel503) verify_env_hotel503 "${2:-149.130.165.30}" "${3:-35.239.107.54}" "${4:-}" "${5:-}" ;;
   snapshot) snapshot ;;
   arm) arm_all ;;
   disarm) disarm_all ;;

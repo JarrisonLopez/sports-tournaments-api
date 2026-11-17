@@ -59,16 +59,23 @@ function Upload-Helper {
   Invoke-Remote "sed -i 's/\r$//' $helperRemote && chmod +x $helperRemote"
 }
 
-function Apply-ConfigMap([string]$LocalYaml, [string]$Label) {
-  Write-Host "=== Apply ConfigMap $Label ==="
+function Apply-ConfigMap(
+  [string]$LocalYaml,
+  [string]$Label,
+  [string]$ExpectResilience,
+  [string]$ExpectFallback
+) {
+  Write-Host "=== Apply ConfigMap $Label (res=$ExpectResilience fb=$ExpectFallback) ==="
   Invoke-Remote "sh $helperRemote clear-env"
   Get-Content -Raw $LocalYaml | & ssh @sshArgs "sudo kubectl apply -f -"
   if ($LASTEXITCODE -ne 0) { throw "kubectl apply failed for $Label" }
+  # ConfigMap via envFrom requires pod restart to pick new values.
   Invoke-Remote "sh $helperRemote rollout"
   Invoke-Remote "sh $helperRemote wait-ready"
-  $verify = & ssh @sshArgs "sh $helperRemote verify-env-hotel503 $ExpectedHotel $ExpectedCine"
+  $verify = & ssh @sshArgs "sh $helperRemote verify-env-hotel503 $ExpectedHotel $ExpectedCine $ExpectResilience $ExpectFallback"
   $verify | Tee-Object -FilePath (Join-Path $EvidenceDir "verify-$Label.txt")
   if ($LASTEXITCODE -ne 0) { throw "verify-env-hotel503 failed for $Label" }
+  # Explicit dual-pod Ready assertion already in wait-ready; snapshot for evidence.
   & ssh @sshArgs "sh $helperRemote snapshot" |
     Out-File (Join-Path $EvidenceDir "k8s-$Label.txt") -Encoding utf8
 }
@@ -90,19 +97,19 @@ Upload-Helper
 switch ($Mode) {
   "baseline" {
     # Baseline = config estable (resiliencia ON, caos OFF, URLs reales) — Hotel normal.
-    Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.yaml") "baseline"
+    Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.yaml") "baseline" "true" "true"
     Show-Status
   }
   "r0" {
-    Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.exp-hotel503-r0.yaml") "r0"
+    Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.exp-hotel503-r0.yaml") "r0" "false" "false"
     Show-Status
   }
   "r1" {
-    Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.exp-hotel503-r1.yaml") "r1"
+    Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.exp-hotel503-r1.yaml") "r1" "true" "true"
     Show-Status
   }
   "rollback" {
-    Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.yaml") "rollback"
+    Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.yaml") "rollback" "true" "true"
     Show-Status
   }
   "status" {

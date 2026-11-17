@@ -1,0 +1,55 @@
+{
+    "conclusion":  "LISTO PARA R0/R1",
+    "localR0":  {
+                    "samplesPartial":  0,
+                    "samplesFailed":  20,
+                    "samplesFull":  0,
+                    "http":  503,
+                    "kind":  "failed"
+                },
+    "localR1":  {
+                    "httpStatus":  200,
+                    "status":  "partial",
+                    "degraded":  true,
+                    "degradedDependencies":  [
+                                                 "hotel"
+                                             ],
+                    "habitacion":  {
+                                       "id":  1,
+                                       "numeroHabitacion":  "DEG-1",
+                                       "precioHabitacion":  0,
+                                       "estadoHabitacion":  "degradado-lab",
+                                       "tipoHabitacion":  "fallback-controlled",
+                                       "origenResiliencia":  "fallback"
+                                   },
+                    "pelicula":  {
+                                     "id":  1,
+                                     "nombre":  "Pelicula Lab"
+                                 },
+                    "providers":  {
+                                      "cine":  {
+                                                   "origen":  "upstream",
+                                                   "baseUrl":  "http://127.0.0.1:18082"
+                                               },
+                                      "hotel":  {
+                                                    "baseUrl":  "http://127.0.0.1:18081",
+                                                    "via":  "fallback"
+                                                }
+                                  }
+                },
+    "k6R1":  {
+                 "full":  0,
+                 "partial":  511,
+                 "failed":  0,
+                 "total":  511,
+                 "fullSuccessRate":  0,
+                 "partialRate":  1,
+                 "availabilityRate":  1,
+                 "errorRate":  0
+             },
+    "awsImage":  "sports-tournaments-api:4.1.1-ac7b0fd",
+    "rebuildNeeded":  false,
+    "samuelActivations":  2,
+    "ttlSeconds":  120,
+    "k6Seconds":  75
+}

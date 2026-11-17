@@ -61,11 +61,33 @@ Confirmar muestra: HTTP 200, `status=success`, `degraded=false`, providers Hotel
 .\scripts\chaos\set_aws_hotel503_mode.ps1 -Mode r0
 ```
 
-Esperado en ambos pods: `CHAOS_LAB_ENABLED=false`, `RESILIENCE_ENABLED=false`, `HOTEL_FALLBACK_ENABLED=false`, URLs reales.
+Esperado en ambos pods: `CHAOS_LAB_ENABLED=false`, `RESILIENCE_ENABLED=false`, `HOTEL_FALLBACK_ENABLED=false`, URLs reales.  
+El script hace `rollout` + `wait-ready` (2/2) y **exige** esos flags en ambos pods.
 
-### 3) Samuel activa HTTP 503 en Hotel → k6 R0
+### TTL Samuel = 120 s · k6 = 75 s → **activaciones independientes**
+
+Cada fallo HTTP 503 de Samuel dura ~120 s y se revierte solo. El perfil k6 dura 75 s (15+45+15).  
+**No** reutilizar la misma activación para R0 y R1: el rollout entre modos tarda y el TTL puede expirar.
+
+Orden por activación:
+
+1. Sports ya en modo R0 (paso 2), steady verificado.
+2. Samuel **activa #1** el 503 (TTL 120 s).
+3. Inmediatamente smoke: `curl` flujo → debe fallar (no 200 partial).
+4. Arrancar k6 R0 **dentro de los primeros ~20 s** del TTL.
+5. Esperar fin k6 + confirmación de Samuel de que el 503 revirtió (o esperar TTL).
+6. Cambiar Sports a R1 (paso 4) **con Hotel ya normal** (rollout ~1–2 min).
+7. Samuel **activa #2** el 503 (nuevo TTL 120 s).
+8. Smoke: flujo → `200` + `status=partial` + `origenResiliencia=fallback`.
+9. k6 R1 de inmediato.
+10. Rollback Sports + Samuel confirma Hotel normal.
+
+### 3) Samuel activa HTTP 503 #1 → k6 R0
 
 ```powershell
+# Smoke pre-k6 (debe ser failed / 5xx, NO partial)
+curl.exe -s -w "http=%{http_code}`n" -H "x-trace-id: r0-smoke-1" "http://3.21.120.51:30080/api/v2/flujo/1/1/1"
+
 $env:BASE_URL="http://3.21.120.51:30080"
 $env:TORNEO_ID="1"; $env:HABITACION_ID="1"; $env:PELICULA_ID="1"
 $env:ROUND="r0"; $env:RUN_ID="hotel503-<ID>"
@@ -74,24 +96,27 @@ k6 run load/k6/flujo-profile-shared.js
 
 Esperado R0: alta tasa `failed` (flujo no completa).
 
-### 4) Preparar R1 (resiliencia ON) — 503 sigue activo
+### 4) Preparar R1 (resiliencia ON) — Hotel ya recuperado
 
 ```powershell
 .\scripts\chaos\set_aws_hotel503_mode.ps1 -Mode r1
 ```
 
-Esperado: `RESILIENCE_ENABLED=true`, `HOTEL_FALLBACK_ENABLED=true`, `CHAOS_LAB_ENABLED=false`.
+Esperado: `RESILIENCE_ENABLED=true`, `HOTEL_FALLBACK_ENABLED=true`, `CHAOS_LAB_ENABLED=false` en **2/2** pods.
 
-### 5) k6 R1
+### 5) Samuel activa HTTP 503 #2 → k6 R1
 
 ```powershell
+# Smoke pre-k6 (debe ser 200 partial + fallback)
+curl.exe -s -H "x-trace-id: r1-smoke-1" "http://3.21.120.51:30080/api/v2/flujo/1/1/1"
+
 $env:BASE_URL="http://3.21.120.51:30080"
 $env:TORNEO_ID="1"; $env:HABITACION_ID="1"; $env:PELICULA_ID="1"
 $env:ROUND="r1"; $env:RUN_ID="hotel503-<ID>"
 k6 run load/k6/flujo-profile-shared.js
 ```
 
-Esperado R1: mayoría `partial` (200 degradado), no `full`. Guardar JSON `load/results/r1-<RUN_ID>.json`.
+Esperado R1: mayoría `partial` (200 degradado), **nunca** contar como `full`. Guardar JSON `load/results/r1-<RUN_ID>.json`.
 
 ### 6) Rollback (config estable)
 
