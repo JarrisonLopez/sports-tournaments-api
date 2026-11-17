@@ -98,7 +98,7 @@ export async function obtenerHabitacion(
               throw new HotelRequestError(response.status, response.statusText);
             }
 
-            return (await response.json()) as HabitacionRemota;
+            return normalizeHabitacionPayload(await response.json());
           };
 
           if (!resilience.enabled) {
@@ -140,4 +140,29 @@ export async function obtenerHabitacion(
     }
     throw error;
   }
+}
+
+/**
+ * Hotel OCI puede enviar precioHabitacion como string decimal ("150000.00").
+ * Normaliza a number sin alterar el resto del contrato.
+ */
+export function normalizeHabitacionPayload(body: unknown): HabitacionRemota {
+  if (!body || typeof body !== "object") {
+    throw new HotelRequestError(502, "payload hotel inválido");
+  }
+
+  const raw = body as Record<string, unknown>;
+  const id = Number(raw.id);
+  const precio = Number(raw.precioHabitacion);
+  if (!Number.isFinite(id) || !Number.isFinite(precio)) {
+    throw new HotelRequestError(502, "campos hotel inválidos");
+  }
+
+  return {
+    id,
+    numeroHabitacion: String(raw.numeroHabitacion ?? ""),
+    precioHabitacion: precio,
+    estadoHabitacion: String(raw.estadoHabitacion ?? ""),
+    tipoHabitacion: String(raw.tipoHabitacion ?? ""),
+  };
 }

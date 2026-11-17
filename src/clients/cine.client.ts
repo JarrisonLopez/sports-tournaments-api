@@ -8,6 +8,8 @@ export interface PeliculaRemota {
   duracion: number;
   genero: string;
   descripcion: string;
+  /** Presente cuando Cine GCP envuelve `{ origen, pelicula }`. */
+  origen?: string;
 }
 
 export class CineConfigError extends Error {
@@ -72,7 +74,7 @@ export async function obtenerPelicula(
           throw new CineRequestError(response.status, response.statusText);
         }
 
-        return (await response.json()) as PeliculaRemota;
+        return normalizePeliculaPayload(await response.json());
       } catch (error) {
         span.recordException(error as Error);
         span.setStatus({
@@ -85,4 +87,40 @@ export async function obtenerPelicula(
       }
     },
   );
+}
+
+/**
+ * Cine GCP (Daniel) responde `{ origen, traceId, pelicula }`.
+ * Los mocks de lab responden la película en la raíz. Ambos son válidos.
+ */
+export function normalizePeliculaPayload(body: unknown): PeliculaRemota {
+  if (!body || typeof body !== "object") {
+    throw new CineRequestError(502, "payload cine inválido");
+  }
+
+  const root = body as Record<string, unknown>;
+  const raw =
+    root.pelicula && typeof root.pelicula === "object"
+      ? (root.pelicula as Record<string, unknown>)
+      : root;
+
+  const id = Number(raw.id);
+  const duracion = Number(raw.duracion);
+  if (!Number.isFinite(id) || !Number.isFinite(duracion)) {
+    throw new CineRequestError(502, "campos cine inválidos");
+  }
+
+  const pelicula: PeliculaRemota = {
+    id,
+    nombre: String(raw.nombre ?? ""),
+    duracion,
+    genero: String(raw.genero ?? ""),
+    descripcion: String(raw.descripcion ?? ""),
+  };
+
+  if (typeof root.origen === "string" && root.origen.length > 0) {
+    pelicula.origen = root.origen;
+  }
+
+  return pelicula;
 }

@@ -40,6 +40,28 @@ describe("hotel.client", () => {
     );
   });
 
+  it("normaliza precioHabitacion string de Hotel OCI", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 1,
+        numeroHabitacion: "101",
+        precioHabitacion: "150000.00",
+        estadoHabitacion: "Disponible",
+        tipoHabitacion: "Doble",
+      }),
+    });
+
+    const habitacion = await obtenerHabitacion(1, "oci-trace", {
+      env: { HOTEL_API_URL: "http://149.130.165.30" },
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    expect(habitacion.precioHabitacion).toBe(150000);
+    expect(habitacion.numeroHabitacion).toBe("101");
+  });
+
   it("lanza HotelRequestError en 5xx", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,

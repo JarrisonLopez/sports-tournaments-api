@@ -82,6 +82,30 @@ export async function ejecutar(datos: FlujoInput) {
           typeof process.env.OBJECT_STORAGE_API_URL === "string" &&
           process.env.OBJECT_STORAGE_API_URL.trim() !== "";
 
+        const hotelBase = (process.env.HOTEL_API_URL || "").replace(/\/+$/, "");
+        const cineBase = (process.env.CINE_API_URL || "").replace(/\/+$/, "");
+        const providers = {
+          hotel: {
+            baseUrl: hotelBase,
+            via: isDegradedHabitacion(habitacion) ? "fallback" : "upstream",
+          },
+          cine: {
+            baseUrl: cineBase,
+            origen:
+              typeof pelicula === "object" &&
+              pelicula !== null &&
+              "origen" in pelicula &&
+              typeof (pelicula as { origen?: string }).origen === "string"
+                ? (pelicula as { origen: string }).origen
+                : "upstream",
+          },
+        };
+
+        span.setAttribute("flujo.hotel_base_url", hotelBase);
+        span.setAttribute("flujo.cine_base_url", cineBase);
+        span.setAttribute("flujo.hotel_via", providers.hotel.via);
+        span.setAttribute("flujo.cine_origen", providers.cine.origen);
+
         if (!objectStorageConfigured) {
           span.setAttribute("flujo.artifact", "skipped");
           span.setAttribute("flujo.outcome", status);
@@ -91,6 +115,7 @@ export async function ejecutar(datos: FlujoInput) {
             status,
             degraded: degradedDependencies.length > 0,
             degradedDependencies,
+            providers,
           };
         }
 
@@ -104,6 +129,7 @@ export async function ejecutar(datos: FlujoInput) {
           status,
           degraded: degradedDependencies.length > 0,
           degradedDependencies,
+          providers,
         };
       } catch (error) {
         span.recordException(error as Error);
