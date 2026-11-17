@@ -1,32 +1,21 @@
-﻿# Evidencia OTLP Sports AWS → Collector OCI (cerrado)
+﻿# Evidencia OTLP + W3C — Sports AWS → OCI Collector
 
-## Resultado
+## Estado
 
-| Chequeo | Resultado |
+| Área | Resultado |
 |---|---|
-| Secrets `sports-otel-secrets` / `sports-otel-ca` | Creados y montados |
-| CA en pods `/etc/otel/otel-lab-ca.crt` | Presente (~1166 bytes) |
-| HAS_HEADERS | yes (ambos pods) |
-| TLS Node `otel-lab.local` + CA | **authorized=true** |
-| SAN del cert | `DNS:otel-lab.local`, `IP:157.137.233.183` |
-| POST `/v1/traces` auth+TLS | **HTTP 200** |
-| POST `/v1/metrics` auth+TLS | **HTTP 200** |
-| POST sin auth | **401** |
-| Flujo multicloud | **200 status=success** Hotel upstream + Cine database |
-| Pods | **2/2 Ready** |
-| Endpoint configurado | `https://otel-lab.local:31443` |
+| OTLP export TLS+Basic | OK (traces/metrics 200) |
+| Propagación W3C | **Corregida** (un solo `traceparent` vía Undici) |
+| Flujo multicloud | 200 success Hotel OCI + Cine GCP |
+| Pods | 2/2 Ready |
 
-## Trace de prueba
+## Bug W3C
 
-- runId: `otel-oci-live-20261116230837`
-- x-trace-id: `otel-oci-live-20261116230837-flujo-1`
-- otelTraceId: `ad97747b16a40a3c738b6591e1f59309`
-- otelSpanId: `354377a4a5339766`
+Doble inyección `propagation.inject` + Undici → `traceparent: "a, b"` inválido.
+Fix en `src/clients/http-trace.ts`: solo `x-trace-id`.
 
-## Pendiente externo
+## Trace live post-fix
 
-Samuel debe confirmar en Tempo/Grafana la recepción de `service.name=sports-api` y el `otelTraceId` anterior (Sports ya exporta con TLS+Basic OK).
-
-## Nota TLS
-
-No usar `hotel-otel-lab` como host OTLP: está en CN pero **no** en SAN. Usar `otel-lab.local`.
+- x-trace-id: `w3c-fix-20261116232931-flujo`
+- otelTraceId: `d16807bbbf8535867ef55c20734c5964`
+- Ver `21-flujo-w3c-*`, `22-w3c-shared-parent-outbound.txt`, `23-pedido-samuel-w3c.md`

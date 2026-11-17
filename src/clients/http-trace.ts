@@ -1,17 +1,17 @@
-import { context, propagation } from "@opentelemetry/api";
-
 /**
- * Cabeceras salientes: x-trace-id de negocio + W3C traceparent/tracestate
- * desde el contexto OTel activo (si hay span).
+ * Cabeceras de negocio salientes.
+ *
+ * W3C `traceparent` / `tracestate` los inyecta únicamente
+ * `@opentelemetry/instrumentation-undici` sobre el span CLIENT real.
+ * No llamar aquí a `propagation.inject`: duplicaría `traceparent`
+ * (manual INTERNAL + Undici CLIENT) y Node lo serializa como
+ * "tp1, tp2", que es inválido para receptores W3C → Hotel/Cine
+ * abren otra traza en Tempo.
  */
 export function buildOutboundTraceHeaders(
   traceId: string,
 ): Record<string, string> {
-  const headers: Record<string, string> = {
+  return {
     "x-trace-id": traceId,
   };
-
-  propagation.inject(context.active(), headers);
-
-  return headers;
 }

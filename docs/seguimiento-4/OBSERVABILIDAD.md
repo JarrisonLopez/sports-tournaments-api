@@ -29,7 +29,7 @@ Lab compartido OCI (Samuel): ver `OTLP_OCI.md`. Rollback: `k8s/aws/configmap.ote
 | Transiciones CB | `sports.hotel.circuit_breaker.transitions` | Evidencia resiliencia |
 | Eventos caos | `sports.chaos.fault.events` | start/end/abort/expire |
 | Trace ID negocio | atributo `sports.trace_id` + header `x-trace-id` | Correlación |
-| Trace OTel | `traceparent` / spans `flujo.multicloud`, `hotel.get_habitacion`, `cine.get_pelicula` | Trazas distribuidas |
+| Trace OTel | `traceparent` (solo Undici CLIENT) + spans `flujo.multicloud`, `hotel.get_habitacion`, `cine.get_pelicula` | Trazas distribuidas; no inyectar `traceparent` a mano (duplica y rompe W3C) |
 
 Las métricas RED HTTP existentes (`http.server.*`) se conservan.
 
