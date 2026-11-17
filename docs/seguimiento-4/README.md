@@ -18,7 +18,7 @@
 | `evidence/multicloud-real/` | Integración real AWS→OCI→GCP |
 | `evidence/aws-rounds/` | Baseline / R0 / R1 medidos en k3s AWS (mocks) |
 | `evidence/aws-intercloud/` | Preparación / rondas intercloud vs Hotel OCI |
-| `evidence/aws-hotel503/` | Preparación / rondas HTTP 503 Hotel OCI |
+| `evidence/aws-hotel503/` | HTTP 503 Hotel OCI — resultados definitivos + modos |
 | `evidence/otel-oci/` | Conectividad OTLP → Collector OCI + traza muestra |
 
 ## URLs activas (lab)

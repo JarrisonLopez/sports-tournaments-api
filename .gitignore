@@ -30,6 +30,8 @@ load/results/**
 !load/results/k6-*-summary.json
 !load/results/aws-validate-*.json
 !load/results/*-aws-rounds-*.json
+!load/results/*-hotel503-*.json
+!load/results/baseline-hotel-503-*.json
 lab/.runtime/
 
 # Terraform local cache. .terraform.lock.hcl queda fuera de esta carpeta y se versiona.

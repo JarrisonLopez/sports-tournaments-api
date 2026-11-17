@@ -172,3 +172,21 @@ Archivo: `load/k6/flujo-profile-shared.js`
 - No mezclar con `POST /chaos/hotel-latency` ni ConfigMaps `exp-intercloud-*` / `exp-r0` (mocks)
 - No `terraform destroy` / no push
 - Si falla el apply de modo: `-Mode rollback`
+
+## Resultados definitivos (ventana Samuel)
+
+Resumen canónico: `docs/seguimiento-4/evidence/aws-hotel503/RESULTADOS_DEFINITIVOS.md`.
+
+| | Baseline | R0 | R1 |
+|---|---:|---:|---:|
+| RUN_ID | `hotel503-baseline-20261117-003033` | `hotel503-r0-retry-20261117-004150` | `hotel503-r1-retry-20261117-011303` |
+| Iters | 289 | 320 | 349 |
+| full / partial / failed | 289 / 0 / 0 | 0 / 0 / 320 | 0 / 349 / 0 |
+| Disponibilidad | 100% completa | 0% | 100% degradada |
+| p95 (ms) | 312.02 | 224.13 | 234.60 |
+
+- Imagen: `4.1.1-ac7b0fd`. Misma carga k6 en las tres rondas. Hotel OCI + Cine GCP.
+- R0: resiliencia OFF → 100% failed mientras el 503 cubrió toda la carga.
+- R1: resiliencia ON → 100% partial; HTTP 200 partial **≠** éxito completo. Samuel: Tempo (Sports partial / Hotel 503 / Cine 200); ~18 llamadas Hotel 503; Hotel recuperado al final.
+- Rollback Sports verificado: 2/2 Ready, flags estables, flujo `success` / `degraded=false`.
+- Ensayos no definitivos: `hotel-503-prueba-01`, `hotel503-r0-20261117-003625`, `hotel503-r1-20261117-010050` (ver carpeta `ensayos/`).

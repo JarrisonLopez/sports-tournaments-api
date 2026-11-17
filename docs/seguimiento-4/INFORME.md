@@ -3,80 +3,79 @@
 **Autor:** Jarrison López  
 **Alcance:** Sports Tournaments API como coordinador multicloud  
 **Extensión:** ≤ 6 páginas  
-**Evidencia AWS:** `docs/seguimiento-4/evidence/aws-rounds/aws-rounds-20261116215016/`
+**Evidencia:** `evidence/aws-rounds/` (latencia mocks) · `evidence/aws-hotel503/` (HTTP 503 OCI)
 
 ## 1. Objetivo y arquitectura
 
 Sports coordina de forma **síncrona y secuencial** Hotel (OCI / Samuel) y Cine (GCP / Daniel) vía `GET /api/v2/flujo/:torneoId/:habitacionId/:peliculaId`, propagando `x-trace-id` y W3C `traceparent`.
 
-**Plataforma:** Kubernetes ligero **k3s sobre EC2** en `us-east-2` (perfil `sports-chaos`), namespace `sports-lab`, **2 réplicas** Ready, MySQL de laboratorio, NodePort `:30080`. Manifiestos en `k8s/aws/`.
+**Plataforma:** k3s sobre EC2 en `us-east-2` (perfil `sports-chaos`), namespace `sports-lab`, **2 réplicas**, MySQL lab, NodePort `:30080`. Manifiestos en `k8s/aws/`.
 
-**Estado estable verificado:** Sports http://3.21.120.51:30080; Hotel http://149.130.165.30; Cine http://35.239.107.54. Tras experimentos, flujo real vuelve a `status=success` sin mocks ni fallback.
+**Estado estable:** Sports http://3.21.120.51:30080; Hotel http://149.130.165.30; Cine http://35.239.107.54. Tras experimentos, flujo real: `status=success`, `degraded=false`, Hotel `upstream`, Cine `database`.
 
 **Limitación:** un solo nodo EC2 no aporta HA ante pérdida de la instancia.
 
-## 2. Experimento
+## 2. Experimento A — Latencia inyectada (mocks)
 
 | Campo | Valor |
 |---|---|
-| Fallo | Latencia 800 ms Sports → Hotel (interruptor lab) |
-| Herramienta | Chaos Toolkit YAML + helpers multi-pod + k6 |
-| Interruptor | `POST/DELETE /chaos/hotel-latency` (`CHAOS_LAB_ENABLED`) |
-| Destino del fallo | **solo** `hotel-mock` en `sports-lab` (no OCI/GCP) |
-| Métrica | % full / partial / failed, disponibilidad, p95 |
-| Radio | Cliente Hotel en proceso Sports |
-| Aborto | ready≠200 o armado fallido |
-| Reversión | disarm multi-pod + ConfigMap multicloud real |
+| Fallo | Latencia 800 ms Sports → Hotel (lab) |
+| Destino | solo `hotel-mock` en `sports-lab` |
+| Resiliencia R1 | timeout 400 + CB + fallback |
+| Evidencia | `aws-rounds-20261116215016` |
 
-## 3. Hipótesis (a priori)
-
-Con timeout + circuit breaker + fallback ante latencia Hotel (misma carga e inyección), la **disponibilidad** (full+partial) permanece ≥90%, el **p95** de respuestas disponibles baja ≥30% vs R0, y se reporta aparte full vs partial (**parcial ≠ éxito completo**). Umbrales no se relajan a posteriori.
-
-## 4. Método Baseline / R0 / R1 (AWS)
-
-Perfil k6 fijo: 15s@2 VU → 45s@4 VU → 15s@0; endpoint `/api/v2/flujo/1/1/1`.
-
-| Ronda | Config | Fallo | Resiliencia |
-|---|---|---|---|
-| Baseline | mocks | no | off |
-| R0 | mocks | 800 ms | off |
-| R1 | mocks | 800 ms | timeout 400 + CB + fallback |
-
-Orquestación: `scripts/chaos/run_aws_rounds.ps1`. Hallazgo operativo: un `env` hardcodeado en el Deployment **pisaba** el ConfigMap; se eliminó para que el CM controle URLs y flags.
-
-## 5. Resultados AWS (medidos)
+**Hipótesis:** disponibilidad (full+partial) ≥90% y p95 ≥30% menor vs R0; partial ≠ full.
 
 | | Baseline | R0 | R1 |
 |---|---:|---:|---:|
-| Iteraciones | 394 | 132 | 330 |
-| Éxito completo | 100% | 100% | **0%** |
-| Parcial | 0% | 0% | **100%** |
-| Fallo | 0% | 0% | 0% |
-| Disponibilidad | 100% | 100% | **100%** |
-| p95 (ms) | 111.6 | 980.4 | **516.4 (−47%)** |
+| Iters | 394 | 132 | 330 |
+| full / partial / failed % | 100/0/0 | 100/0/0 | 0/100/0 |
+| Disponibilidad % | 100 | 100 | 100 |
+| p95 (ms) | 111.6 | 980.4 | 516.4 (−47%) |
 
-**Conclusión:** hipótesis **SOSTENIDA**. Compromiso: R1 prioriza disponibilidad degradada (fallback) frente a éxito completo; no se confunde parcial con full.
+**Conclusión A:** hipótesis **SOSTENIDA**. R1 prioriza disponibilidad degradada.
 
-**Evidencia timeout/CB:** respuesta R1 con `origenResiliencia=fallback`; logs ~405 ms tras timeout y luego ~3–4 ms con CB abierto.
+## 3. Experimento B — Hotel OCI HTTP 503 (definitivo)
 
-## 6. Observabilidad
+Fallo real en Hotel OCI (Samuel). Sports sin inyección (`CHAOS_LAB_ENABLED=false`). Imagen `4.1.1-ac7b0fd`. Misma carga k6: 15s@2 → 45s@4 → 15s@0. Detalle: `EXPERIMENTO_HOTEL_503.md` + `evidence/aws-hotel503/RESULTADOS_DEFINITIVOS.md`.
 
-Logs correlacionan `traceId` y `otelTraceId`. OTLP hacia Collector OCI (`https://otel-lab.local:31443` vía hostAlias; SAN del cert). Protocol `http/protobuf`, Basic + CA en Secrets. Detalle: `OTLP_OCI.md` + `evidence/otel-oci/`.
+**Hipótesis / umbrales a priori:** Baseline full≥95%; R0 error≥90%; R1 availability≥90% y partial≥80% con full≤10%.
 
-## 7. Dos patrones de resiliencia
+| | Baseline | R0 | R1 |
+|---|---:|---:|---:|
+| RUN_ID | `hotel503-baseline-20261117-003033` | `hotel503-r0-retry-20261117-004150` | `hotel503-r1-retry-20261117-011303` |
+| Iters | 289 | 320 | 349 |
+| full / partial / failed | 289/0/0 | 0/0/320 | 0/349/0 |
+| Disponibilidad | 100% completa | 0% | 100% degradada |
+| p95 (ms) | 312.02 | 224.13 | 234.60 |
 
-1. **Timeout** en cliente Hotel (`HOTEL_TIMEOUT_MS`) — corta espera bajo latencia inyectada.  
-2. **Circuit breaker + fallback** — tras fallos/timeouts, abre el circuito y sirve habitación degradada válida (`status=partial`).
+**Por qué R0 = 100% failed:** `RESILIENCE_ENABLED=false` — sin timeout/CB/fallback; el 503 de Hotel corta el flujo en todas las iters (cobertura completa del fallo).
 
-## 8. Uso de IA (Cursor)
+**Por qué R1 = 100% partial:** resiliencia ON — Hotel 5xx → fallback → Cine OK → HTTP 200 `status=partial`. **HTTP 200 partial no es éxito completo** (`degraded` / dependencia Hotel degradada).
 
-Apoyo en orquestación AWS, ConfigMaps de experimento, clasificación k6 full/partial/failed y redacción de evidencias. Descartado: inyectar fallos en OCI/GCP; afirmar OTLP compartido sin Collector.
+**p95:** R0/R1 similares y menores que Baseline; el 503 es rápido, así que la ganancia de R1 es **disponibilidad**, no latencia.
 
-## 9. Hallazgos, limitaciones y backlog
+**CB:** Samuel reportó ~18 llamadas Hotel 503 ante 349 iters R1 (compatible con CB abierto). Activación CB no se afirma con capturas locales Grafana/Prometheus; evidencia Tempo (Sports partial / Hotel 503 / Cine 200) vive en repo Samuel (`e91ab94`).
 
-- Fallo controlado en cliente saliente Sports→Hotel; radio acotado a Sports (no altera OCI/GCP).  
-- Rondas AWS con **mocks** ya medidas (`aws-rounds-20261116215016`).  
-- Rondas **intercloud** (Hotel OCI real) preparadas en `EXPERIMENTO_INTERCLOUD.md`; ejecución live pendiente de ventana con Samuel (`-AuthorizeIntercloud`).  
-- Estado de caos es **por pod** → armar ambas réplicas.  
-- Sin HA multi-nodo.  
-- Backlog: Samuel confirma spans en Tempo/Grafana (`otelTraceId` en `evidence/otel-oci/`); autorización Samuel → intercloud; demo.
+**Rollback:** 2/2 Ready; resiliencia ON; caos OFF; Hotel/Cine reales; flujo success.
+
+**Ensayos descartados:** R0 `…003625` (44 full); R1 provisional `…010050` (341; 13 full).
+
+**Conclusión B:** hipótesis de **disponibilidad bajo 503** **SOSTENIDA**.
+
+## 4. Observabilidad y dos patrones
+
+Logs con `traceId` / `otelTraceId`. OTLP → Collector OCI. Fix W3C: un solo `traceparent` (Undici). Ver `OTLP_OCI.md`, `evidence/otel-oci/`.
+
+1. **Timeout** Hotel (`HOTEL_TIMEOUT_MS`) — relevante sobre todo bajo latencia.  
+2. **Circuit breaker + fallback** — ante timeouts/5xx abre y sirve habitación degradada (`status=partial`).
+
+## 5. Uso de IA (Cursor)
+
+Orquestación AWS, ConfigMaps Hotel 503, clasificación k6 y consolidación de evidencias. No se inventaron capturas Grafana ni se activó caos desde Sports hacia OCI.
+
+## 6. Limitaciones y cierre
+
+- Radio del fallo A: cliente Sports→mock. Fallo B: Hotel OCI real (Samuel).  
+- Sin HA multi-nodo; TTL OCI (~120 s) exige activaciones separadas R0/R1.  
+- Pendientes: incorporar evidencias Tempo/Grafana de Samuel al expediente común si se comparten; demo de clase; entrega formal del informe.

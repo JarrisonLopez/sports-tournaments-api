@@ -1,0 +1,7 @@
+﻿http=200
+traceId=hotel503-post-consolidation-1
+verifiedAt=2026-11-17T06:27:55Z
+status=success
+degraded=false
+hotel=upstream OCI
+cine=database GCP

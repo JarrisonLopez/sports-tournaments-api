@@ -44,3 +44,8 @@ npm run chaos:gate
 ```
 
 Fuente local: `chaos/results/rounds-latest.json` (no sustituye la evidencia AWS).
+
+## Hotel OCI HTTP 503 (intercloud real)
+
+Rondas definitivas con fallo Samuel: ver `EXPERIMENTO_HOTEL_503.md` y `evidence/aws-hotel503/RESULTADOS_DEFINITIVOS.md`  
+(`hotel503-baseline-20261117-003033` / `hotel503-r0-retry-20261117-004150` / `hotel503-r1-retry-20261117-011303`).
