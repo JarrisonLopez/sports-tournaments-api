@@ -82,18 +82,18 @@ function Invoke-HttpGet([string]$Url, [string]$OutFile) {
 
 function Assert-RealProviders([string]$FlujoFile, [string]$Label) {
   $raw = Get-Content $FlujoFile -Raw -ErrorAction SilentlyContinue
-  if (-not $raw) { throw "$Label: empty flujo body" }
+  if (-not $raw) { throw "${Label}: empty flujo body" }
   if ($raw -notmatch [regex]::Escape($ExpectedHotel)) {
-    throw "$Label: expected Hotel OCI $ExpectedHotel in response"
+    throw "${Label}: expected Hotel OCI $ExpectedHotel in response"
   }
   if ($raw -notmatch [regex]::Escape($ExpectedCine)) {
-    throw "$Label: expected Cine GCP $ExpectedCine in response"
+    throw "${Label}: expected Cine GCP $ExpectedCine in response"
   }
   if ($raw -match "hotel-mock|cine-mock") {
-    throw "$Label: mock URLs detected — abort intercloud"
+    throw "${Label}: mock URLs detected — abort intercloud"
   }
   if ($raw -match '"via"\s*:\s*"fallback"' -and $Label -match "steady|baseline|after-restore") {
-    throw "$Label: unexpected fallback under steady state"
+    throw "${Label}: unexpected fallback under steady state"
   }
 }
 
