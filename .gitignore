@@ -34,6 +34,8 @@ infra/aws/terraform/tfplan-lab.bin
 infra/aws/terraform/plan-output.txt
 infra/aws/terraform/plan-stdout.txt
 infra/aws/terraform/plan-stderr.txt
+infra/aws/terraform/apply-stdout.txt
+infra/aws/terraform/apply-stderr.txt
 infra/aws/.tools/
 *.pem
 !*.pem.example
