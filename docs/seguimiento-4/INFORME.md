@@ -2,63 +2,79 @@
 
 **Autor:** Jarrison López  
 **Alcance:** Sports Tournaments API como coordinador multicloud  
-**Extensión:** ≤ 6 páginas (este documento)  
-**Fecha de evidencia local:** ver `chaos/results/rounds-latest.json`
+**Extensión:** ≤ 6 páginas  
+**Evidencia AWS:** `docs/seguimiento-4/evidence/aws-rounds/aws-rounds-20261116215016/`
 
 ## 1. Objetivo y arquitectura
 
 Sports coordina de forma **síncrona y secuencial** Hotel (OCI / Samuel) y Cine (GCP / Daniel) vía `GET /api/v2/flujo/:torneoId/:habitacionId/:peliculaId`, propagando `x-trace-id` y W3C `traceparent`.
 
-**Plataforma elegida:** Kubernetes ligero **k3s sobre una EC2** (no EKS), por costo académico. Manifiestos en `k8s/aws/` con **2 réplicas**, probes, requests/limits y MySQL de laboratorio. **Limitación:** un solo nodo no aporta HA ante pérdida de la EC2.
+**Plataforma:** Kubernetes ligero **k3s sobre EC2** en `us-east-2` (perfil `sports-chaos`), namespace `sports-lab`, **2 réplicas** Ready, MySQL de laboratorio, NodePort `:30080`. Manifiestos en `k8s/aws/`.
 
-**Estado AWS:** infraestructura como código lista; **despliegue remoto no verificado** (sin apply autorizado).
+**Estado estable verificado:** Sports http://3.21.120.51:30080; Hotel http://149.130.165.30; Cine http://35.239.107.54. Tras experimentos, flujo real vuelve a `status=success` sin mocks ni fallback.
+
+**Limitación:** un solo nodo EC2 no aporta HA ante pérdida de la instancia.
 
 ## 2. Experimento
 
 | Campo | Valor |
 |---|---|
-| Fallo | Latencia inyectada Sports → Hotel |
-| Herramienta | Chaos Toolkit YAML + runner Node |
-| Interruptor propio | `POST/DELETE /chaos/hotel-latency` |
-| Métrica | p95, within-SLO, wall-clock, success rate |
-| Radio | Solo cliente Hotel en Sports (lab) |
-| Aborto | ready≠200 o activate fallido |
-| Reversión | DELETE idempotente + TTL |
+| Fallo | Latencia 800 ms Sports → Hotel (interruptor lab) |
+| Herramienta | Chaos Toolkit YAML + helpers multi-pod + k6 |
+| Interruptor | `POST/DELETE /chaos/hotel-latency` (`CHAOS_LAB_ENABLED`) |
+| Destino del fallo | **solo** `hotel-mock` en `sports-lab` (no OCI/GCP) |
+| Métrica | % full / partial / failed, disponibilidad, p95 |
+| Radio | Cliente Hotel en proceso Sports |
+| Aborto | ready≠200 o armado fallido |
+| Reversión | disarm multi-pod + ConfigMap multicloud real |
 
-## 3. Hipótesis
+## 3. Hipótesis (a priori)
 
-Bajo carga concurrente fija, inyectar latencia degrada p95/SLO (R0). Con **timeout + circuit breaker** (R1) e idéntica carga/fallo, mejora el presupuesto de latencia/saturación frente a R0.
+Con timeout + circuit breaker + fallback ante latencia Hotel (misma carga e inyección), la **disponibilidad** (full+partial) permanece ≥90%, el **p95** de respuestas disponibles baja ≥30% vs R0, y se reporta aparte full vs partial (**parcial ≠ éxito completo**). Umbrales no se relajan a posteriori.
 
-## 4. Resultados locales (mocks HTTP + k6)
+## 4. Método Baseline / R0 / R1 (AWS)
 
-**Causa del R1 0% inicial:** timeout (300 ms) < latencia (800 ms) sin fallback → todos los flujos fallaban; el gate no debe aprobar 0% éxito.
+Perfil k6 fijo: 15s@2 VU → 45s@4 VU → 15s@0; endpoint `/api/v2/flujo/1/1/1`.
 
-**Corrección:** timeout + CB + fallback de Hotel (respuesta parcial válida). SLO solo sobre éxitos.
-
-| Rondas Node | Baseline | R0 | R1 |
+| Ronda | Config | Fallo | Resiliencia |
 |---|---|---|---|
-| éxito | 100% | 100% | 100% (parcial) |
-| p95Success | ~124 ms | ~831 ms | ~423 ms (−49%) |
+| Baseline | mocks | no | off |
+| R0 | mocks | 800 ms | off |
+| R1 | mocks | 800 ms | timeout 400 + CB + fallback |
 
-| k6 real | Baseline | R0 | R1 |
-|---|---|---|---|
-| éxito | 100% | 100% | 100% |
-| p95 | ~11 ms | ~820 ms | ~11 ms |
-| iters | 511 | 143 | 492 |
+Orquestación: `scripts/chaos/run_aws_rounds.ps1`. Hallazgo operativo: un `env` hardcodeado en el Deployment **pisaba** el ConfigMap; se eliminó para que el CM controle URLs y flags.
 
-**Conclusión:** hipótesis **SOSTENIDA** en laboratorio. Evidencia: `chaos/results/rounds-latest.json`, `load/results/*-k6-20261116191039.json`.
+## 5. Resultados AWS (medidos)
 
-**Importante:** no son resultados AWS/OCI/GCP.
+| | Baseline | R0 | R1 |
+|---|---:|---:|---:|
+| Iteraciones | 394 | 132 | 330 |
+| Éxito completo | 100% | 100% | **0%** |
+| Parcial | 0% | 0% | **100%** |
+| Fallo | 0% | 0% | 0% |
+| Disponibilidad | 100% | 100% | **100%** |
+| p95 (ms) | 111.6 | 980.4 | **516.4 (−47%)** |
 
-## 5. Observabilidad y chaos gate
+**Conclusión:** hipótesis **SOSTENIDA**. Compromiso: R1 prioriza disponibilidad degradada (fallback) frente a éxito completo; no se confunde parcial con full.
 
-OTLP configurable; métricas `sports.flujo.*`, timeouts, CB y eventos de caos. Workflow `.github/workflows/chaos-gate.yml` ejecuta tests + R0/R1 mocks y falla si no hay degradación R0 ni mejora R1.
+**Evidencia timeout/CB:** respuesta R1 con `origenResiliencia=fallback`; logs ~405 ms tras timeout y luego ~3–4 ms con CB abierto.
 
-## 6. Uso de IA (Cursor)
+## 6. Observabilidad
 
-**Aportes:** generación de IaC k3s/EC2, clientes/resiliencia, runners de caos, workflow y documentación.  
-**Descartado:** EKS por costo; latencia fuera del timeout (bug corregido tras R1 fallida); afirmar despliegue AWS sin apply.
+Logs correlacionan `traceId` y `otelTraceId`. Sin Collector OTLP compartido en el lab (`OTEL_EXPORTER_OTLP_ENDPOINT` vacío): hay instrumentación y logs, **no** spans exportados a un backend común. Pendiente: endpoint OTLP de laboratorio (Samuel/Grafana) sin infra AWS adicional.
 
-## 7. Pendientes multicloud
+## 7. Dos patrones de resiliencia
 
-URLs reales Hotel/Cine, Grafana de Samuel, apply AWS autorizado, demo con réplicas en EC2 y traza end-to-end entre nubes.
+1. **Timeout** en cliente Hotel (`HOTEL_TIMEOUT_MS`) — corta espera bajo latencia inyectada.  
+2. **Circuit breaker + fallback** — tras fallos/timeouts, abre el circuito y sirve habitación degradada válida (`status=partial`).
+
+## 8. Uso de IA (Cursor)
+
+Apoyo en orquestación AWS, ConfigMaps de experimento, clasificación k6 full/partial/failed y redacción de evidencias. Descartado: inyectar fallos en OCI/GCP; afirmar OTLP compartido sin Collector.
+
+## 9. Hallazgos, limitaciones y backlog
+
+- Fallo controlado solo vía mock Hotel; radio acotado a Sports.  
+- Estado de caos es **por pod** → armar ambas réplicas.  
+- Sin HA multi-nodo; sin backend OTLP compartido.  
+- Backlog: confirmar mismos `x-trace-id` en logs Hotel/Cine; conectar OTLP de lab; demo/sustención con esta evidencia.

@@ -1,0 +1,5 @@
+﻿experiment: hotel-latency (aws multi-pod)
+latencyMs=800 ttlMs=120000
+note: fault state is in-memory per pod; NodePort alone is insufficient with 2 replicas
+hold_seconds=5
+rollback_ok

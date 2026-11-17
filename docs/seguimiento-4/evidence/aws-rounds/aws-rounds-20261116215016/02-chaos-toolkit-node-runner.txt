@@ -1,0 +1,7 @@
+﻿node : Error: abort: fault already on
+At C:\Users\jarri\Desktop\TRABAJOS U\sports-tournaments-api\scripts\chaos\run_aws_rounds.ps1:139 char:3
++   node (Join-Path $Root "scripts\chaos\run_hotel_latency_experiment.m ...
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error: abort: fault already on:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

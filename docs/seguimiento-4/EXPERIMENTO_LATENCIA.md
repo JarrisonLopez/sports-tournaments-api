@@ -25,3 +25,7 @@ Proceso Sports (cliente Hotel). No modifica la infra de Samuel. Mocks locales po
 ## Aborto / reversión
 
 Abortar si `/health/ready` ≠ 200 o la activación falla. Siempre ejecutar DELETE del interruptor y verificar `enabled=false`.
+
+## AWS (2 réplicas)
+
+Con NodePort, el estado del fallo es **por proceso/pod**. Usar `scripts/chaos/aws-lab-helpers.sh arm|disarm` (o `run_aws_rounds.ps1`) para armar ambas réplicas. No inyectar fallos hacia Hotel OCI ni Cine GCP: usar `hotel-mock` vía `configmap.exp-r0.yaml` / `configmap.exp-r1.yaml` y restaurar `configmap.yaml`.
