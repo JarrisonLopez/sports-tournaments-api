@@ -1,19 +1,41 @@
 {
   "baseline": {
+    "requests": 24,
     "p95SuccessMs": 50,
     "successRate": 1,
-    "withinSloOfTotal": 1
+    "availabilityRate": 1,
+    "fullSuccessRate": 1,
+    "partialRate": 0,
+    "withinSloOfTotal": 1,
+    "fullSuccess": 24,
+    "partial": 0,
+    "errors": 0,
+    "success": 24
   },
   "r0": {
+    "requests": 24,
     "p95SuccessMs": 800,
     "successRate": 1,
+    "availabilityRate": 1,
+    "fullSuccessRate": 1,
+    "partialRate": 0,
     "withinSloOfTotal": 0,
-    "errors": 0
+    "fullSuccess": 24,
+    "partial": 0,
+    "errors": 0,
+    "success": 24
   },
   "r1": {
+    "requests": 24,
     "p95SuccessMs": 300,
     "successRate": 0,
+    "availabilityRate": 0,
+    "fullSuccessRate": 0,
+    "partialRate": 0,
     "withinSloOfTotal": 0,
-    "errors": 24
+    "fullSuccess": 0,
+    "partial": 0,
+    "errors": 24,
+    "success": 0
   }
 }

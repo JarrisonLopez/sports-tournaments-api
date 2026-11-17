@@ -11,10 +11,10 @@ export function buildHotelFallback(habitacionId: number): HabitacionRemota & {
 } {
   return {
     id: habitacionId,
-    numeroHabitacion: `FALLBACK-${habitacionId}`,
+    numeroHabitacion: `DEG-${habitacionId}`,
     precioHabitacion: 0,
-    estadoHabitacion: "degradado",
-    tipoHabitacion: "fallback",
+    estadoHabitacion: "degradado-lab",
+    tipoHabitacion: "fallback-controlled",
     origenResiliencia: "fallback",
   };
 }

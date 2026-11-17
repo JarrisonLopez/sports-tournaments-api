@@ -1,10 +1,10 @@
 /**
  * Perfil fijo k6 — Seguimiento #4 Sports flujo multicloud.
- * El mismo perfil se usa en Baseline, R0 y R1.
+ * Clasifica: full | partial | failed (no trata partial como full).
  */
 import http from "k6/http";
 import { check, sleep } from "k6";
-import { Rate, Trend } from "k6/metrics";
+import { Counter, Rate, Trend } from "k6/metrics";
 import { textSummary } from "https://jslib.k6.io/k6-summary/0.0.2/index.js";
 
 const FIXED_STAGES = [
@@ -16,7 +16,7 @@ const FIXED_STAGES = [
 const FIXED_THRESHOLDS = {
   http_req_failed: ["rate<0.95"],
   http_req_duration: ["p(95)<15000"],
-  flujo_success: ["rate>0.05"],
+  flujo_available: ["rate>0.05"],
 };
 
 export const options = {
@@ -32,7 +32,10 @@ export const options = {
   summaryTrendStats: ["avg", "min", "med", "p(95)", "p(99)", "max"],
 };
 
-const flujoSuccess = new Rate("flujo_success");
+const flujoAvailable = new Rate("flujo_available");
+const flujoFull = new Counter("flujo_full");
+const flujoPartial = new Counter("flujo_partial");
+const flujoFailed = new Counter("flujo_failed");
 const flujoDuration = new Trend("flujo_duration_ms", true);
 
 const BASE_URL = (__ENV.BASE_URL || "http://127.0.0.1:8080").replace(/\/+$/, "");
@@ -67,17 +70,44 @@ export default function () {
     tags: { name: "flujo_multicloud", round: ROUND },
   });
 
-  const ok = check(res, {
-    "status is 200": (r) => r.status === 200,
+  let kind = "failed";
+  let body = null;
+  try {
+    body = res.json();
+  } catch (e) {
+    body = null;
+  }
+
+  if (res.status === 200 && body && body.habitacion && body.pelicula) {
+    const degraded =
+      body.status === "partial" ||
+      body.degraded === true ||
+      (body.habitacion && body.habitacion.origenResiliencia === "fallback");
+    kind = degraded ? "partial" : "full";
+  }
+
+  check(res, {
+    "http 200": (r) => r.status === 200,
+    "classified response": () => kind === "full" || kind === "partial" || kind === "failed",
   });
 
-  flujoSuccess.add(ok);
+  const available = kind === "full" || kind === "partial";
+  flujoAvailable.add(available);
+  if (kind === "full") flujoFull.add(1);
+  else if (kind === "partial") flujoPartial.add(1);
+  else flujoFailed.add(1);
+
   flujoDuration.add(res.timings.duration);
   sleep(0.3);
 }
 
 export function handleSummary(data) {
   const m = data.metrics || {};
+  const full = metricValue(m.flujo_full, "count") || 0;
+  const partial = metricValue(m.flujo_partial, "count") || 0;
+  const failed = metricValue(m.flujo_failed, "count") || 0;
+  const total = full + partial + failed;
+
   const payload = {
     runId: RUN_ID,
     round: ROUND,
@@ -86,18 +116,29 @@ export function handleSummary(data) {
       stages: FIXED_STAGES,
       thresholds: FIXED_THRESHOLDS,
     },
+    classification: {
+      full,
+      partial,
+      failed,
+      total,
+      fullSuccessRate: total ? full / total : 0,
+      partialRate: total ? partial / total : 0,
+      availabilityRate: total ? (full + partial) / total : 0,
+      errorRate: total ? failed / total : 0,
+    },
     metrics: {
       http_req_duration_p95: metricValue(m.http_req_duration, "p(95)"),
       http_req_failed_rate: metricValue(m.http_req_failed, "rate"),
-      flujo_success_rate: metricValue(m.flujo_success, "rate"),
+      flujo_available_rate: metricValue(m.flujo_available, "rate"),
       iterations: metricValue(m.iterations, "count"),
-      checks_passed: metricValue(m.checks, "passes"),
-      checks_failed: metricValue(m.checks, "fails"),
     },
   };
 
   return {
-    stdout: textSummary(data, { indent: " ", enableColors: false }) + "\n" + JSON.stringify(payload, null, 2),
+    stdout:
+      textSummary(data, { indent: " ", enableColors: false }) +
+      "\n" +
+      JSON.stringify(payload, null, 2),
     [`load/results/${ROUND}-${RUN_ID}.json`]: JSON.stringify(payload, null, 2),
   };
 }

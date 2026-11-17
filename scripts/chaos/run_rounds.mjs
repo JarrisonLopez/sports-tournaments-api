@@ -29,7 +29,7 @@ const TTL_MS = Number(process.env.CHAOS_HOTEL_LATENCY_TTL_MS || 120000);
 const HOTEL_TIMEOUT_MS = Number(process.env.HOTEL_TIMEOUT_MS || 400);
 
 const HYPOTHESIS =
-  "Con timeout+CB+fallback ante latencia Hotel, el flujo mantiene éxito de negocio ≥90% (incluye parciales) y reduce p95 de respuestas exitosas ≥30% vs R0, misma carga e inyección.";
+  "Con timeout+CB+fallback ante latencia Hotel (misma carga e intensidad), la disponibilidad (full+partial) permanece ≥90%, el p95 de respuestas disponibles baja ≥30% vs R0, y se reporta aparte fullSuccess vs partial (parcial ≠ éxito completo).";
 
 function percentile(values, p) {
   if (values.length === 0) return null;
@@ -206,6 +206,7 @@ async function main() {
       errorNames[o.errorName] = (errorNames[o.errorName] || 0) + 1;
     }
 
+    const fullSuccess = successOutcomes.length - partialCount;
     return {
       name,
       resilienceEnabled,
@@ -214,9 +215,13 @@ async function main() {
       concurrency: CONCURRENCY,
       success: successOutcomes.length,
       partial: partialCount,
-      fullSuccess: successOutcomes.length - partialCount,
+      fullSuccess,
       errors: failedOutcomes.length,
+      /** Disponibilidad = full + partial (HTTP/negocio disponible). */
       successRate: successOutcomes.length / REQUESTS,
+      availabilityRate: successOutcomes.length / REQUESTS,
+      fullSuccessRate: fullSuccess / REQUESTS,
+      partialRate: partialCount / REQUESTS,
       errorRate: failedOutcomes.length / REQUESTS,
       sloMs: SLO_MS,
       /** Solo éxitos bajo presupuesto; errores no cuentan. */
@@ -244,7 +249,8 @@ async function main() {
   const r0 = await runRound("r0", { resilienceEnabled: false, fault: true });
   const r1 = await runRound("r1", { resilienceEnabled: true, fault: true });
 
-  const successOk = r1.successRate >= 0.9;
+  const availabilityOk = r1.availabilityRate >= 0.9;
+  const r0FullOk = r0.fullSuccessRate >= 0.9;
   const p95Improved =
     r1.p95SuccessMs != null &&
     r0.p95SuccessMs != null &&
@@ -253,17 +259,28 @@ async function main() {
 
   let conclusion;
   let diagnosis = null;
-  if (successOk && p95Improved) {
+  const serviceLevel =
+    r1.fullSuccessRate >= 0.9
+      ? "full"
+      : r1.partialRate >= 0.9
+        ? "partial"
+        : "mixed";
+
+  if (availabilityOk && r0FullOk && p95Improved) {
     conclusion =
-      "Hipótesis SOSTENIDA: R1 mantiene ≥90% éxito de negocio y reduce ≥30% el p95 de éxitos vs R0.";
-  } else if (successOk && sloImproved) {
+      `Hipótesis SOSTENIDA a nivel disponibilidad: R1 availability≥90% y p95≤70% de R0. ` +
+      `Nivel de servicio R1=${serviceLevel} (full=${(r1.fullSuccessRate * 100).toFixed(0)}% partial=${(r1.partialRate * 100).toFixed(0)}%). ` +
+      `Parcial no se cuenta como éxito completo.`;
+  } else if (availabilityOk && sloImproved) {
     conclusion =
-      "Hipótesis SOSTENIDA (vía SLO): R1 mantiene éxito y mejora cumplimiento de presupuesto vs R0.";
+      `Hipótesis SOSTENIDA (vía SLO/disponibilidad). Nivel R1=${serviceLevel}. Parcial ≠ full.`;
   } else {
     conclusion = "Hipótesis NO sostenida con la evidencia actual.";
     diagnosis = {
       observation: {
-        r1SuccessRate: r1.successRate,
+        r1Availability: r1.availabilityRate,
+        r1Full: r1.fullSuccessRate,
+        r1Partial: r1.partialRate,
         r0P95Success: r0.p95SuccessMs,
         r1P95Success: r1.p95SuccessMs,
       },
@@ -277,10 +294,12 @@ async function main() {
     notMulticloud: true,
     hypothesis: HYPOTHESIS,
     thresholdsAPriori: {
-      minR1SuccessRate: 0.9,
+      minR1AvailabilityRate: 0.9,
+      minR0FullSuccessRate: 0.9,
       maxR1P95SuccessRatioVsR0: 0.7,
-      rejectIfR1SuccessRateIsZero: true,
-      sloCountsOnlySuccessfulRequests: true,
+      rejectIfR1AvailabilityIsZero: true,
+      partialIsNotFullSuccess: true,
+      sloCountsOnlyAvailableRequests: true,
     },
     preflight: {
       hotel: process.env.HOTEL_API_URL,
@@ -308,7 +327,10 @@ async function main() {
         r0.p95SuccessMs && r1.p95SuccessMs
           ? ((r1.p95SuccessMs - r0.p95SuccessMs) / r0.p95SuccessMs) * 100
           : null,
-      successRateDeltaPp: (r1.successRate - r0.successRate) * 100,
+      availabilityDeltaPp: (r1.availabilityRate - r0.availabilityRate) * 100,
+      fullSuccessDeltaPp: (r1.fullSuccessRate - r0.fullSuccessRate) * 100,
+      partialRateR1: r1.partialRate,
+      serviceLevelR1: serviceLevel,
       withinSloOfTotalDeltaPp:
         (r1.withinSloOfTotal - r0.withinSloOfTotal) * 100,
       wallClockDeltaPct:
@@ -336,12 +358,16 @@ async function main() {
     console.error("Gate: R0 no degradó p95 de éxitos vs baseline");
     process.exit(1);
   }
-  if (r1.successRate <= 0) {
-    console.error("Gate: R1 con 0% éxito — rechazado");
+  if (r1.availabilityRate <= 0) {
+    console.error("Gate: R1 con 0% disponibilidad — rechazado");
     process.exit(1);
   }
-  if (r1.successRate < 0.9) {
-    console.error(`Gate: R1 successRate ${r1.successRate} < 0.9`);
+  if (r1.availabilityRate < 0.9) {
+    console.error(`Gate: R1 availabilityRate ${r1.availabilityRate} < 0.9`);
+    process.exit(1);
+  }
+  if (r0.fullSuccessRate < 0.9) {
+    console.error(`Gate: R0 fullSuccessRate ${r0.fullSuccessRate} < 0.9`);
     process.exit(1);
   }
   if (!p95Improved && !sloImproved) {
