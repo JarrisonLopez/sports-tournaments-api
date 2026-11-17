@@ -1,5 +1,6 @@
 import { Counter, Histogram } from "@opentelemetry/api";
-import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { OTLPMetricExporter as OTLPMetricExporterHttpJson } from "@opentelemetry/exporter-metrics-otlp-http";
+import { OTLPMetricExporter as OTLPMetricExporterHttpProto } from "@opentelemetry/exporter-metrics-otlp-proto";
 import {
   defaultResource,
   resourceFromAttributes,
@@ -16,6 +17,12 @@ import {
   resolveRuntimeIdentity,
   type RuntimeIdentity,
 } from "../config/runtime-identity";
+import {
+  OTLP_METRICS_PATH,
+  isOtlpSignalEnabled,
+  otlpSignalUrl,
+  resolveOtlpHttpProtocol,
+} from "./otlp-env";
 
 export const HTTP_REQUESTS_METRIC = "http.server.requests";
 export const HTTP_ERRORS_METRIC = "http.server.errors";
@@ -49,8 +56,6 @@ const HEALTH_PATHS = new Set(["/health/live", "/health/ready"]);
 const DURATION_BUCKETS_SECONDS = [
   0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
 ];
-
-const OTLP_METRICS_PATH = "v1/metrics";
 
 export const METRIC_EXPORT_INTERVAL_MILLIS = 60_000;
 
@@ -140,44 +145,27 @@ export function resolveMetricReaders(
     return [reader];
   }
 
-  const url = otlpMetricsUrl(env.OTEL_EXPORTER_OTLP_ENDPOINT);
+  if (!isOtlpSignalEnabled(env.OTEL_METRICS_EXPORTER, true)) {
+    return [];
+  }
+
+  const url = otlpSignalUrl(env.OTEL_EXPORTER_OTLP_ENDPOINT, OTLP_METRICS_PATH);
 
   if (!url) {
     return [];
   }
 
+  const exporter =
+    resolveOtlpHttpProtocol(env) === "http/protobuf"
+      ? new OTLPMetricExporterHttpProto({ url })
+      : new OTLPMetricExporterHttpJson({ url });
+
   return [
     new PeriodicExportingMetricReader({
-      exporter: new OTLPMetricExporter({ url }),
+      exporter,
       exportIntervalMillis: METRIC_EXPORT_INTERVAL_MILLIS,
     }),
   ];
-}
-
-function otlpMetricsUrl(endpoint: string | undefined): string | undefined {
-  if (typeof endpoint !== "string") {
-    return undefined;
-  }
-
-  const base = endpoint.trim();
-
-  if (base.length === 0) {
-    return undefined;
-  }
-
-  const withSlash = base.endsWith("/") ? base : `${base}/`;
-
-  try {
-    const url = new URL(`${withSlash}${OTLP_METRICS_PATH}`);
-
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return undefined;
-    }
-
-    return url.href;
-  } catch {
-    return undefined;
-  }
 }
 
 export function registerRedMetrics(

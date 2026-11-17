@@ -55,7 +55,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerRedMetrics(
     app,
     createHttpMetrics(
-      "sports-api",
+      env.OTEL_SERVICE_NAME?.trim() || "sports-api",
       options.metricsReader,
       env,
       identity,
