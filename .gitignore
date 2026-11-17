@@ -13,6 +13,7 @@ chaos/results/**
 !chaos/results/.gitkeep
 !chaos/results/rounds-latest.json
 !chaos/results/aws-rounds-latest.json
+!chaos/results/aws-intercloud-latest.json
 !chaos/results/fixtures/
 !chaos/results/fixtures/**
 !chaos/results/chaos-toolkit-journal.json

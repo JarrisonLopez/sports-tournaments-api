@@ -6,6 +6,12 @@ export type HotelLatencyFaultState = {
   expiresAt: number | null;
   activatedAt: number | null;
   tokenConfigured: boolean;
+  /** Dónde se aplica el delay: cliente HTTP saliente de Sports (no el servidor Hotel). */
+  injectionPoint: "sports-outbound-hotel-client";
+  /** Base URL efectiva de Hotel al armar (p. ej. OCI real). */
+  targetBaseUrl: string | null;
+  /** true si el destino no parece un mock de laboratorio. */
+  targetsRealHotel: boolean;
 };
 
 export type HotelLatencyFaultConfig = {
@@ -23,11 +29,29 @@ let state: {
   latencyMs: number;
   expiresAt: number | null;
   activatedAt: number | null;
+  targetBaseUrl: string | null;
 } = {
   latencyMs: 0,
   expiresAt: null,
   activatedAt: null,
+  targetBaseUrl: null,
 };
+
+function resolveHotelTargetBaseUrl(
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const raw = env.HOTEL_API_URL?.trim() ?? "";
+  if (!raw) return null;
+  return raw.replace(/\/+$/, "");
+}
+
+function isRealHotelTarget(baseUrl: string | null): boolean {
+  if (!baseUrl) return false;
+  const lower = baseUrl.toLowerCase();
+  if (lower.includes("hotel-mock")) return false;
+  if (lower.includes("127.0.0.1") || lower.includes("localhost")) return false;
+  return true;
+}
 
 export function resolveHotelLatencyFaultConfig(
   env: NodeJS.ProcessEnv = process.env,
@@ -49,12 +73,16 @@ export function getHotelLatencyFaultState(
 ): HotelLatencyFaultState {
   expireIfNeeded(now);
 
+  const targetBaseUrl = state.targetBaseUrl ?? resolveHotelTargetBaseUrl();
   return {
     enabled: isFaultActive(now),
     latencyMs: state.latencyMs,
     expiresAt: state.expiresAt,
     activatedAt: state.activatedAt,
     tokenConfigured: config.token !== null && config.labEnabled,
+    injectionPoint: "sports-outbound-hotel-client",
+    targetBaseUrl,
+    targetsRealHotel: isRealHotelTarget(targetBaseUrl),
   };
 }
 
@@ -90,15 +118,20 @@ export function activateHotelLatencyFault(input: {
     );
   }
 
+  const targetBaseUrl = resolveHotelTargetBaseUrl();
   state = {
     latencyMs: Math.floor(input.latencyMs),
     expiresAt: now + Math.floor(input.ttlMs),
     activatedAt: now,
+    targetBaseUrl,
   };
 
   recordChaosFaultEvent("start", {
     target: "hotel",
     latency_ms: String(state.latencyMs),
+    target_base_url: targetBaseUrl ?? "unset",
+    targets_real_hotel: String(isRealHotelTarget(targetBaseUrl)),
+    injection_point: "sports-outbound-hotel-client",
   });
 
   return getHotelLatencyFaultState(now, config);
@@ -115,6 +148,7 @@ export function deactivateHotelLatencyFault(
     latencyMs: 0,
     expiresAt: null,
     activatedAt: null,
+    targetBaseUrl: null,
   };
 
   if (wasActive || reason !== "end") {
@@ -166,7 +200,12 @@ function delayWithOptionalAbort(
 }
 
 export function resetHotelLatencyFaultForTests(): void {
-  state = { latencyMs: 0, expiresAt: null, activatedAt: null };
+  state = {
+    latencyMs: 0,
+    expiresAt: null,
+    activatedAt: null,
+    targetBaseUrl: null,
+  };
 }
 
 function isFaultActive(now: number): boolean {

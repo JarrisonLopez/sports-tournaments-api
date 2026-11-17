@@ -85,7 +85,18 @@ export async function obtenerHabitacion(
           }
 
           const callFetch = async (signal?: AbortSignal) => {
-            await applyHotelLatencyIfActive(Date.now(), signal);
+            const injectedMs = await applyHotelLatencyIfActive(
+              Date.now(),
+              signal,
+            );
+            if (injectedMs > 0) {
+              span.setAttribute("sports.chaos.hotel_latency_ms", injectedMs);
+              span.setAttribute(
+                "sports.chaos.injection_point",
+                "sports-outbound-hotel-client",
+              );
+              span.setAttribute("sports.chaos.hotel_target", baseUrl);
+            }
 
             const response = await doFetch(url, {
               headers: buildOutboundTraceHeaders(traceId),
@@ -93,6 +104,7 @@ export async function obtenerHabitacion(
             });
 
             span.setAttribute("http.status_code", response.status);
+            span.setAttribute("sports.hotel.base_url", baseUrl);
 
             if (!response.ok) {
               throw new HotelRequestError(response.status, response.statusText);

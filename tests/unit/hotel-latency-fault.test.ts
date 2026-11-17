@@ -19,6 +19,7 @@ describe("hotel-latency-fault", () => {
 
   afterEach(() => {
     resetHotelLatencyFaultForTests();
+    delete process.env.HOTEL_API_URL;
   });
 
   it("rechaza activación si el laboratorio no está armado", () => {
@@ -69,6 +70,38 @@ describe("hotel-latency-fault", () => {
     ).toThrow(ChaosFaultValidationError);
   });
 
+  it("marca destino real OCI vs mock de laboratorio", () => {
+    const config = {
+      labEnabled: true,
+      token: TOKEN,
+      maxLatencyMs: 5000,
+      maxTtlMs: 60_000,
+    };
+
+    process.env.HOTEL_API_URL = "http://149.130.165.30";
+    const oci = activateHotelLatencyFault({
+      token: TOKEN,
+      latencyMs: 50,
+      ttlMs: 1000,
+      config,
+    });
+    expect(oci.injectionPoint).toBe("sports-outbound-hotel-client");
+    expect(oci.targetBaseUrl).toBe("http://149.130.165.30");
+    expect(oci.targetsRealHotel).toBe(true);
+    deactivateHotelLatencyFault("end");
+
+    process.env.HOTEL_API_URL = "http://hotel-mock:8081";
+    const mock = activateHotelLatencyFault({
+      token: TOKEN,
+      latencyMs: 50,
+      ttlMs: 1000,
+      config,
+    });
+    expect(mock.targetsRealHotel).toBe(false);
+    deactivateHotelLatencyFault("end");
+    delete process.env.HOTEL_API_URL;
+  });
+
   it("activa, aplica delay real y revierte de forma idempotente", async () => {
     const config = {
       labEnabled: true,
@@ -85,6 +118,7 @@ describe("hotel-latency-fault", () => {
       now: 1_000,
     });
     expect(activated.enabled).toBe(true);
+    expect(activated.injectionPoint).toBe("sports-outbound-hotel-client");
 
     const started = Date.now();
     const delayed = await applyHotelLatencyIfActive(1_100);

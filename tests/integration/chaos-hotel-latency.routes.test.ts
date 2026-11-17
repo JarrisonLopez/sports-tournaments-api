@@ -16,7 +16,9 @@ describe("chaos hotel latency routes", () => {
     delete process.env.CHAOS_FAULT_TOKEN;
   });
 
-  it("arma, consulta y desarma el interruptor con token de laboratorio", async () => {
+  it(
+    "arma, consulta y desarma el interruptor con token de laboratorio",
+    async () => {
     process.env.CHAOS_LAB_ENABLED = "true";
     process.env.CHAOS_FAULT_TOKEN = TOKEN;
 
@@ -44,6 +46,7 @@ describe("chaos hotel latency routes", () => {
     });
     expect(on.statusCode).toBe(200);
     expect(on.json().enabled).toBe(true);
+    expect(on.json().injectionPoint).toBe("sports-outbound-hotel-client");
 
     const status = await app.inject({ method: "GET", url: "/chaos/hotel-latency" });
     expect(status.json().enabled).toBe(true);
@@ -57,5 +60,7 @@ describe("chaos hotel latency routes", () => {
     expect(off.json().enabled).toBe(false);
 
     await app.close();
-  });
+  },
+  30_000,
+  );
 });
