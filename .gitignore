@@ -7,6 +7,9 @@ PROJECT_CONTEXT.md
 
 # AWS / chaos lab secrets and results
 k8s/aws/secret.yaml
+k8s/aws/secret.otel.yaml
+otel-lab-ca.crt
+*.otel.token
 infra/aws/terraform/*.tfvars
 !infra/aws/terraform/*.tfvars.example
 chaos/results/**
