@@ -44,6 +44,83 @@ verify_env() {
   fi
 }
 
+# Args: expect_hotel expect_cine expect_resilience expect_chaos [expect_otel_endpoint]
+# Comprueba AMBOS pods: URLs reales, flags y OTLP no vacío (intercloud).
+verify_env_intercloud() {
+  expect_hotel="${1:-149.130.165.30}"
+  expect_cine="${2:-35.239.107.54}"
+  expect_res="${3:-}"
+  expect_chaos="${4:-}"
+  expect_otel="${5:-https://otel-lab.local:31443}"
+  OK=0
+  COUNT=0
+  for p in $(sudo kubectl -n "$NS" get pods -l app=sports-tournaments-api -o jsonpath='{.items[*].metadata.name}'); do
+    COUNT=$((COUNT + 1))
+    echo "=== pod=$p ==="
+    CHAOS=$(sudo kubectl -n "$NS" exec "$p" -- printenv CHAOS_LAB_ENABLED)
+    RES=$(sudo kubectl -n "$NS" exec "$p" -- printenv RESILIENCE_ENABLED)
+    FB=$(sudo kubectl -n "$NS" exec "$p" -- printenv HOTEL_FALLBACK_ENABLED)
+    TO=$(sudo kubectl -n "$NS" exec "$p" -- printenv HOTEL_TIMEOUT_MS)
+    HOTEL=$(sudo kubectl -n "$NS" exec "$p" -- printenv HOTEL_API_URL)
+    CINE=$(sudo kubectl -n "$NS" exec "$p" -- printenv CINE_API_URL)
+    OTEL=$(sudo kubectl -n "$NS" exec "$p" -- printenv OTEL_EXPORTER_OTLP_ENDPOINT)
+    OTEL_CERT=$(sudo kubectl -n "$NS" exec "$p" -- printenv OTEL_EXPORTER_OTLP_CERTIFICATE)
+    echo "CHAOS_LAB_ENABLED=$CHAOS"
+    echo "RESILIENCE_ENABLED=$RES"
+    echo "HOTEL_FALLBACK_ENABLED=$FB"
+    echo "HOTEL_TIMEOUT_MS=$TO"
+    echo "HOTEL_API_URL=$HOTEL"
+    echo "CINE_API_URL=$CINE"
+    echo "OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL"
+    echo "OTEL_EXPORTER_OTLP_CERTIFICATE=$OTEL_CERT"
+    echo "$HOTEL" | grep -q "$expect_hotel" || {
+      echo "ERROR: HOTEL_API_URL missing $expect_hotel on $p" >&2
+      exit 1
+    }
+    echo "$CINE" | grep -q "$expect_cine" || {
+      echo "ERROR: CINE_API_URL missing $expect_cine on $p" >&2
+      exit 1
+    }
+    echo "$HOTEL" | grep -Eqi 'hotel-mock|mock' && {
+      echo "ERROR: mock Hotel URL on $p" >&2
+      exit 1
+    }
+    echo "$CINE" | grep -Eqi 'cine-mock|mock' && {
+      echo "ERROR: mock Cine URL on $p" >&2
+      exit 1
+    }
+    if [ -n "$expect_res" ]; then
+      [ "$RES" = "$expect_res" ] || {
+        echo "ERROR: RESILIENCE_ENABLED expected=$expect_res got=$RES on $p" >&2
+        exit 1
+      }
+    fi
+    if [ -n "$expect_chaos" ]; then
+      [ "$CHAOS" = "$expect_chaos" ] || {
+        echo "ERROR: CHAOS_LAB_ENABLED expected=$expect_chaos got=$CHAOS on $p" >&2
+        exit 1
+      }
+    fi
+    if [ -n "$expect_otel" ]; then
+      [ "$OTEL" = "$expect_otel" ] || {
+        echo "ERROR: OTEL endpoint expected=$expect_otel got=$OTEL on $p" >&2
+        exit 1
+      }
+      [ -n "$OTEL_CERT" ] || {
+        echo "ERROR: OTEL_EXPORTER_OTLP_CERTIFICATE empty on $p" >&2
+        exit 1
+      }
+    fi
+    OK=$((OK + 1))
+  done
+  echo "verified_pods=$OK"
+  [ "$COUNT" -ge 2 ] || {
+    echo "ERROR: need >=2 pods, found $COUNT" >&2
+    exit 1
+  }
+  [ "$OK" -eq "$COUNT" ]
+}
+
 wait_ready() {
   echo "Waiting for sports-tournaments-api 2/2 Ready..."
   sudo kubectl -n "$NS" wait --for=condition=available --timeout=180s deployment/sports-tournaments-api
@@ -168,6 +245,7 @@ case "$cmd" in
   wait-ready) wait_ready ;;
   verify-env) verify_env "${2:-}" ;;
   verify-env-hotel503) verify_env_hotel503 "${2:-149.130.165.30}" "${3:-35.239.107.54}" "${4:-}" "${5:-}" ;;
+  verify-env-intercloud) verify_env_intercloud "${2:-149.130.165.30}" "${3:-35.239.107.54}" "${4:-}" "${5:-}" "${6:-https://otel-lab.local:31443}" ;;
   snapshot) snapshot ;;
   arm) arm_all ;;
   disarm) disarm_all ;;
@@ -178,7 +256,7 @@ case "$cmd" in
     verify_env "${2:-hotel-mock}"
     ;;
   *)
-    echo "usage: $0 {clear-env|rollout|wait-ready|verify-env|verify-env-hotel503|snapshot|arm|disarm|logs|prepare-exp} [expect...]"
+    echo "usage: $0 {clear-env|rollout|wait-ready|verify-env|verify-env-hotel503|verify-env-intercloud|snapshot|arm|disarm|logs|prepare-exp} [expect...]"
     exit 1
     ;;
 esac

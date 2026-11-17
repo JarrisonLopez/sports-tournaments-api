@@ -7,7 +7,7 @@
 | `OBSERVABILIDAD.md` | Métricas y OTLP |
 | `OTLP_OCI.md` | Collector OCI Samuel (auth/TLS/rollout) |
 | `EXPERIMENTO_LATENCIA.md` | Experimento + interruptor |
-| `EXPERIMENTO_INTERCLOUD.md` | Latencia Sports→Hotel OCI (rúbrica) |
+| `EXPERIMENTO_INTERCLOUD.md` | Latencia Sports→Hotel OCI (Baseline res ON + OTLP) |
 | `EXPERIMENTO_HOTEL_503.md` | Indisponibilidad HTTP 503 Hotel OCI (Samuel) |
 | `RESILIENCIA.md` | Timeout y circuit breaker |
 | `RONDAS_R0_R1.md` | Procedimiento y resultados |

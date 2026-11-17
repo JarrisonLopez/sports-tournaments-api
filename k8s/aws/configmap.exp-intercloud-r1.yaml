@@ -1,6 +1,8 @@
 # Experimento INTERCLOUD R1: mismos destinos OCI/GCP + timeout/CB/fallback.
-# Latencia solo en cliente saliente Sports→Hotel. No modifica pods de Samuel.
-# Temporal y reversible → restaurar k8s/aws/configmap.yaml
+# Misma latencia 800 ms en cliente saliente Sports→Hotel.
+# HOTEL_TIMEOUT_MS=400 < 800 → el timeout corta durante la inyección (antes del fetch).
+# Conserva OTLP (mismo endpoint/CA que configmap.yaml). Secrets OTEL sin cambios.
+# Temporal → restaurar k8s/aws/configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -17,7 +19,12 @@ data:
   HOTEL_API_URL: "http://149.130.165.30"
   CINE_API_URL: "http://35.239.107.54"
   OBJECT_STORAGE_API_URL: ""
-  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  OTEL_SERVICE_NAME: "sports-api"
+  OTEL_TRACES_EXPORTER: "otlp"
+  OTEL_METRICS_EXPORTER: "otlp"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "https://otel-lab.local:31443"
+  OTEL_EXPORTER_OTLP_CERTIFICATE: "/etc/otel/otel-lab-ca.crt"
   FLUJO_ORCHESTRATION_MODE: "sequential"
   HOTEL_TIMEOUT_MS: "400"
   HOTEL_FALLBACK_ENABLED: "true"

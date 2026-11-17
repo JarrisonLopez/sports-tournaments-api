@@ -1,7 +1,8 @@
-# Experimento INTERCLOUD R0 / Baseline: Hotel OCI + Cine GCP reales.
-# Latencia se inyecta SOLO en el cliente HTTP saliente de Sports (no en OCI).
-# Requiere ventana acordada con Samuel antes de armar el fallo.
-# Temporal y reversible → restaurar k8s/aws/configmap.yaml
+# Experimento INTERCLOUD R0: Hotel OCI + Cine GCP reales.
+# Latencia 800 ms armada en cliente saliente Sports (no en OCI).
+# Resiliencia OFF — el flujo absorbe la latencia completa.
+# Conserva OTLP (mismo endpoint/CA que configmap.yaml). Secrets OTEL sin cambios.
+# Temporal → restaurar k8s/aws/configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -18,7 +19,12 @@ data:
   HOTEL_API_URL: "http://149.130.165.30"
   CINE_API_URL: "http://35.239.107.54"
   OBJECT_STORAGE_API_URL: ""
-  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  OTEL_SERVICE_NAME: "sports-api"
+  OTEL_TRACES_EXPORTER: "otlp"
+  OTEL_METRICS_EXPORTER: "otlp"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "https://otel-lab.local:31443"
+  OTEL_EXPORTER_OTLP_CERTIFICATE: "/etc/otel/otel-lab-ca.crt"
   FLUJO_ORCHESTRATION_MODE: "sequential"
   HOTEL_TIMEOUT_MS: "400"
   HOTEL_FALLBACK_ENABLED: "false"

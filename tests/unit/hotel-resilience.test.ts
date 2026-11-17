@@ -1,15 +1,25 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  activateHotelLatencyFault,
+  resetHotelLatencyFaultForTests,
+} from "../../src/chaos/hotel-latency-fault";
+import {
   obtenerHabitacion,
   resetHotelCircuitBreakerForTests,
 } from "../../src/clients/hotel.client";
 import { CircuitOpenError } from "../../src/resilience/circuit-breaker";
 import { HotelTimeoutError } from "../../src/resilience/timeout";
 
+const CHAOS_TOKEN = "chaos-lab-token-minimo-32-chars!!";
+
 describe("hotel client resilience", () => {
   afterEach(() => {
     resetHotelCircuitBreakerForTests();
+    resetHotelLatencyFaultForTests();
+    delete process.env.CHAOS_LAB_ENABLED;
+    delete process.env.CHAOS_FAULT_TOKEN;
+    delete process.env.HOTEL_API_URL;
   });
 
   it("aplica timeout cuando RESILIENCE_ENABLED=true sin fallback", async () => {
@@ -209,5 +219,101 @@ describe("hotel client resilience", () => {
         fetch: fetchMock as never,
       }),
     ).rejects.toMatchObject({ name: "HotelRequestError", status: 404 });
+  });
+
+  it("intercloud R1: latencia 800ms dentro de timeout 400ms aborta antes del fetch y usa fallback", async () => {
+    process.env.CHAOS_LAB_ENABLED = "true";
+    process.env.CHAOS_FAULT_TOKEN = CHAOS_TOKEN;
+    process.env.HOTEL_API_URL = "http://149.130.165.30";
+
+    activateHotelLatencyFault({
+      token: CHAOS_TOKEN,
+      latencyMs: 800,
+      ttlMs: 30_000,
+      config: {
+        labEnabled: true,
+        token: CHAOS_TOKEN,
+        maxLatencyMs: 10_000,
+        maxTtlMs: 120_000,
+      },
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 1,
+        numeroHabitacion: "101",
+        precioHabitacion: 1,
+        estadoHabitacion: "ok",
+        tipoHabitacion: "std",
+      }),
+    });
+
+    const started = Date.now();
+    const habitacion = await obtenerHabitacion(1, "t-lat-r1", {
+      env: {
+        HOTEL_API_URL: "http://149.130.165.30",
+        RESILIENCE_ENABLED: "true",
+        HOTEL_FALLBACK_ENABLED: "true",
+        HOTEL_TIMEOUT_MS: "400",
+        HOTEL_CB_FAILURE_THRESHOLD: "10",
+        CHAOS_LAB_ENABLED: "true",
+        CHAOS_FAULT_TOKEN: CHAOS_TOKEN,
+      },
+      fetch: fetchMock as never,
+    });
+    const elapsed = Date.now() - started;
+
+    expect(habitacion.origenResiliencia).toBe("fallback");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(elapsed).toBeGreaterThanOrEqual(350);
+    expect(elapsed).toBeLessThan(700);
+  });
+
+  it("intercloud R0: latencia 800ms sin resiliencia llega al fetch tras el delay", async () => {
+    process.env.CHAOS_LAB_ENABLED = "true";
+    process.env.CHAOS_FAULT_TOKEN = CHAOS_TOKEN;
+    process.env.HOTEL_API_URL = "http://149.130.165.30";
+
+    activateHotelLatencyFault({
+      token: CHAOS_TOKEN,
+      latencyMs: 200,
+      ttlMs: 30_000,
+      config: {
+        labEnabled: true,
+        token: CHAOS_TOKEN,
+        maxLatencyMs: 10_000,
+        maxTtlMs: 120_000,
+      },
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 1,
+        numeroHabitacion: "101",
+        precioHabitacion: 10,
+        estadoHabitacion: "ok",
+        tipoHabitacion: "std",
+      }),
+    });
+
+    const started = Date.now();
+    const habitacion = await obtenerHabitacion(1, "t-lat-r0", {
+      env: {
+        HOTEL_API_URL: "http://149.130.165.30",
+        RESILIENCE_ENABLED: "false",
+        CHAOS_LAB_ENABLED: "true",
+        CHAOS_FAULT_TOKEN: CHAOS_TOKEN,
+      },
+      fetch: fetchMock as never,
+    });
+    const elapsed = Date.now() - started;
+
+    expect(habitacion.origenResiliencia).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(elapsed).toBeGreaterThanOrEqual(180);
   });
 });

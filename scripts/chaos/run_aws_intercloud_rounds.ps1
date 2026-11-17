@@ -7,8 +7,12 @@
   apunta a OCI y CINE_API_URL a GCP. El delay se aplica en Sports antes del fetch;
   no modifica infraestructura de Samuel.
 
+  Baseline: resiliencia ON, sin latencia armada.
+  R0: resiliencia OFF + latencia 800 ms.
+  R1: resiliencia ON (timeout 400 + CB + fallback) + misma latencia.
+
   SIN -AuthorizeIntercloud (o AUTHORIZE_INTERCLOUD=1): solo dry-run / preparación.
-  CON autorización: ejecuta las rondas y restaura configmap.yaml.
+  CON autorización: ejecuta las rondas y restaura configmap.yaml (try/finally).
 #>
 param(
   [string]$BaseUrl = "http://3.21.120.51:30080",
@@ -28,6 +32,9 @@ $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $Root
 
 $authorized = $AuthorizeIntercloud -or ($env:AUTHORIZE_INTERCLOUD -eq "1")
+$K6Profile = Join-Path $Root "load\k6\flujo-profile-shared.js"
+# k6 wall-clock ≈ 75s; exigir margen de TTL restante antes de arrancar.
+$MinTtlRemainingMs = 90000
 
 if (-not $RunId) {
   $suffix = if ($authorized) { "live" } else { "dryrun" }
@@ -46,8 +53,13 @@ $thresholdsAPriori = [ordered]@{
   maxR1P95SuccessRatioVsR0 = 0.7
   partialIsNotFullSuccess = $true
   latencyMs = $LatencyMs
-  k6Profile = "load/k6/flujo-profile.js (15s@2, 45s@4, 15s@0)"
+  hotelTimeoutMsR1 = 400
+  k6Profile = "load/k6/flujo-profile-shared.js (15s@2, 45s@4, 15s@0)"
+  baseline = "RESILIENCE_ENABLED=true, fault not armed"
+  r0 = "RESILIENCE_ENABLED=false, fault 800ms"
+  r1 = "RESILIENCE_ENABLED=true timeout/CB/fallback, fault 800ms"
   hypothesis = "Con timeout+CB+fallback ante latencia Sports→Hotel OCI (misma carga), disponibilidad (full+partial) >=90% y p95 <=70% de R0; parcial != full."
+  timeoutNote = "applyHotelLatencyIfActive corre DENTRO de withTimeout: 800ms > 400ms ⇒ R1 aborta durante inyección (antes del fetch)."
 }
 
 function Invoke-Remote([string]$RemoteCmd) {
@@ -85,26 +97,36 @@ function Assert-RealProviders([string]$FlujoFile, [string]$Label) {
   }
 }
 
-function Apply-ConfigMap([string]$LocalYaml, [string]$Label, [string]$ExpectHotel) {
-  Write-Host "=== Apply ConfigMap $Label ==="
+function Apply-ConfigMap(
+  [string]$LocalYaml,
+  [string]$Label,
+  [string]$ExpectResilience,
+  [string]$ExpectChaos
+) {
+  Write-Host "=== Apply ConfigMap $Label (res=$ExpectResilience chaos=$ExpectChaos) ==="
   Invoke-Helper "clear-env"
   Get-Content -Raw $LocalYaml | & ssh @sshArgs "sudo kubectl apply -f -"
   if ($LASTEXITCODE -ne 0) { throw "kubectl apply failed for $Label" }
   Invoke-Helper "rollout"
-  $verify = & ssh @sshArgs "CHAOS_FAULT_TOKEN='$ChaosToken' sh $helperRemote verify-env $ExpectHotel"
+  Invoke-Helper "wait-ready"
+  $verify = & ssh @sshArgs "CHAOS_FAULT_TOKEN='$ChaosToken' sh $helperRemote verify-env-intercloud $ExpectedHotel $ExpectedCine $ExpectResilience $ExpectChaos https://otel-lab.local:31443"
   $verify | Tee-Object -FilePath (Join-Path $Evidence "verify-$Label.txt")
-  if ($LASTEXITCODE -ne 0) { throw "verify-env failed for $Label" }
+  if ($LASTEXITCODE -ne 0) { throw "verify-env-intercloud failed for $Label" }
 }
 
 function Set-Chaos([string]$Action, [string]$Round) {
   if ($Action -eq "on") {
+    $armedAt = (Get-Date).ToUniversalTime().ToString("o")
     Invoke-Remote "CHAOS_FAULT_TOKEN='$ChaosToken' CHAOS_HOTEL_LATENCY_MS='$LatencyMs' CHAOS_HOTEL_LATENCY_TTL_MS='$TtlMs' sh $helperRemote arm" |
       Tee-Object -FilePath (Join-Path $Evidence "chaos-arm-$Round.txt")
-    $statePath = Join-Path $Evidence "chaos-state-$Round.json"
+    $armTxt = Get-Content (Join-Path $Evidence "chaos-arm-$Round.txt") -Raw
+    if ($armTxt -notmatch "armed_pods=2") {
+      throw "Abort: expected armed_pods=2 for $Round"
+    }
+    $statePath = Join-Path $Evidence "chaos-state-$Round-start.json"
     curl.exe -s "$BaseUrl/chaos/hotel-latency" -o $statePath
     $state = Get-Content $statePath -Raw | ConvertFrom-Json
-    if (-not $state.enabled) { throw "Chaos not enabled after arm" }
-    # Imagen >= evidencia intercloud expone targetsRealHotel/targetBaseUrl.
+    if (-not $state.enabled) { throw "Chaos not enabled after arm ($Round)" }
     if ($null -ne $state.PSObject.Properties["targetsRealHotel"]) {
       if (-not $state.targetsRealHotel) {
         throw "Abort: fault target is not real Hotel OCI (targetsRealHotel=false)"
@@ -113,24 +135,43 @@ function Set-Chaos([string]$Action, [string]$Round) {
         throw "Abort: targetBaseUrl=$($state.targetBaseUrl) != OCI $ExpectedHotel"
       }
     } else {
-      Write-Warning "Pod image sin campos targetsRealHotel; verificando HOTEL_API_URL via kubectl"
-      Invoke-Helper "verify-env $ExpectedHotel"
+      throw "Abort: image missing targetsRealHotel (redeploy required)"
     }
+    if ($null -eq $state.expiresAt) { throw "Abort: expiresAt missing after arm" }
+    $remaining = [int64]$state.expiresAt - [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    if ($remaining -lt $MinTtlRemainingMs) {
+      throw "Abort: TTL remaining ${remaining}ms < ${MinTtlRemainingMs}ms needed for k6"
+    }
+    @"
+round=$Round
+armedAtUtc=$armedAt
+latencyMs=$LatencyMs
+ttlMs=$TtlMs
+expiresAt=$($state.expiresAt)
+remainingMsBeforeK6=$remaining
+targetBaseUrl=$($state.targetBaseUrl)
+targetsRealHotel=$($state.targetsRealHotel)
+"@ | Out-File (Join-Path $Evidence "chaos-coverage-$Round.txt") -Encoding utf8
   } else {
+    $disarmedAt = (Get-Date).ToUniversalTime().ToString("o")
     Invoke-Remote "CHAOS_FAULT_TOKEN='$ChaosToken' sh $helperRemote disarm" |
       Tee-Object -FilePath (Join-Path $Evidence "chaos-disarm-$Round.txt")
+    $statePath = Join-Path $Evidence "chaos-state-$Round-end.json"
+    curl.exe -s "$BaseUrl/chaos/hotel-latency" -o $statePath
+    "disarmedAtUtc=$disarmedAt" | Out-File (Join-Path $Evidence "chaos-disarm-meta-$Round.txt") -Encoding utf8
   }
 }
 
 function Invoke-K6Round([string]$Round) {
-  Write-Host "=== k6 $Round (intercloud) ==="
+  Write-Host "=== k6 $Round (intercloud / flujo-profile-shared) ==="
+  if (-not (Test-Path $K6Profile)) { throw "Missing k6 profile: $K6Profile" }
   $env:BASE_URL = $BaseUrl
   $env:TORNEO_ID = "1"
   $env:HABITACION_ID = "1"
   $env:PELICULA_ID = "1"
   $env:RUN_ID = $RunId
   $env:ROUND = $Round
-  & k6 run (Join-Path $Root "load\k6\flujo-profile.js") 2>&1 |
+  & k6 run $K6Profile 2>&1 |
     Tee-Object -FilePath (Join-Path $Evidence "k6-$Round-stdout.txt")
   $summarySrc = Join-Path $Root "load\results\$Round-$RunId.json"
   if (Test-Path $summarySrc) {
@@ -144,6 +185,25 @@ function Capture-Logs([string]$Name) {
 
 function Save-K8sSnapshot([string]$Name) {
   & ssh @sshArgs "sh $helperRemote snapshot" | Out-File (Join-Path $Evidence $Name) -Encoding utf8
+}
+
+function Restore-StableMulticloud([string]$Reason) {
+  Write-Host "=== RESTORE stable multicloud ($Reason) ==="
+  try {
+    Invoke-Remote "CHAOS_FAULT_TOKEN='$ChaosToken' sh $helperRemote disarm" |
+      Tee-Object -FilePath (Join-Path $Evidence "chaos-disarm-restore.txt")
+  } catch {
+    Write-Warning "disarm during restore failed: $_"
+  }
+  Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.yaml") "multicloud-real" "true" "false"
+  Save-K8sSnapshot "05-after-restore-k8s.txt"
+  Invoke-HttpGet "$BaseUrl/health/ready" (Join-Path $Evidence "05-after-ready")
+  Invoke-HttpGet "$BaseUrl/chaos/hotel-latency" (Join-Path $Evidence "05-after-chaos")
+  Invoke-HttpGet "$BaseUrl/api/v2/flujo/1/1/1" (Join-Path $Evidence "05-after-flujo")
+  Assert-RealProviders (Join-Path $Evidence "05-after-flujo") "after-restore"
+  Capture-Logs "05-after-logs.txt"
+  "restoredAtUtc=$((Get-Date).ToUniversalTime().ToString('o'))`nreason=$Reason" |
+    Out-File (Join-Path $Evidence "05-restore-meta.txt") -Encoding utf8
 }
 
 Write-Host "RunId=$RunId authorized=$authorized Evidence=$Evidence"
@@ -166,7 +226,19 @@ $prep = [ordered]@{
   authorized = $authorized
   generatedAt = (Get-Date).ToUniversalTime().ToString("o")
   injectionPoint = "sports-outbound-hotel-client"
+  k6Profile = "load/k6/flujo-profile-shared.js"
+  configMaps = @{
+    baseline = "k8s/aws/configmap.exp-intercloud-baseline.yaml"
+    r0 = "k8s/aws/configmap.exp-intercloud-r0.yaml"
+    r1 = "k8s/aws/configmap.exp-intercloud-r1.yaml"
+    restore = "k8s/aws/configmap.yaml"
+  }
   targets = @{ hotel = "http://$ExpectedHotel"; cine = "http://$ExpectedCine" }
+  otel = @{
+    endpoint = "https://otel-lab.local:31443"
+    certificatePath = "/etc/otel/otel-lab-ca.crt"
+    secretsUnchanged = @("sports-otel-secrets", "sports-otel-ca")
+  }
   thresholdsAPriori = $thresholdsAPriori
   status = if ($authorized) { "executing" } else { "prepared-pending-samuel-authorization" }
   commandsWhenAuthorized = @(
@@ -177,9 +249,11 @@ $prep = [ordered]@{
     "health/ready != 200",
     "flujo sin providers OCI/GCP",
     "targetsRealHotel != true al armar",
-    "armado multi-pod < 2"
+    "armed_pods != 2",
+    "TTL restante < 90s antes de k6",
+    "OTEL endpoint vacío o distinto al estable"
   )
-  restore = "k8s/aws/configmap.yaml (CHAOS_LAB_ENABLED=false, RESILIENCE_ENABLED=true, URLs reales)"
+  restore = "try/finally → disarm + k8s/aws/configmap.yaml (OTLP + resiliencia + URLs reales)"
 }
 ($prep | ConvertTo-Json -Depth 8) | Out-File (Join-Path $Evidence "00-preparation.json") -Encoding utf8
 
@@ -191,43 +265,57 @@ if (-not $authorized) {
   exit 0
 }
 
-# --- LIVE intercloud rounds ---
+# --- LIVE intercloud rounds (restore always) ---
 Write-Host "=== AUTHORIZED: running intercloud Baseline/R0/R1 ==="
+$liveFailed = $false
+$liveError = $null
 
-Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.exp-intercloud-r0.yaml") "intercloud-r0" $ExpectedHotel
-Save-K8sSnapshot "01-baseline-k8s.txt"
-Invoke-HttpGet "$BaseUrl/api/v2/flujo/1/1/1" (Join-Path $Evidence "01-baseline-flujo")
-Assert-RealProviders (Join-Path $Evidence "01-baseline-flujo") "baseline"
-Invoke-K6Round "baseline"
-Capture-Logs "01-baseline-logs.txt"
+try {
+  Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.exp-intercloud-baseline.yaml") "intercloud-baseline" "true" "true"
+  Save-K8sSnapshot "01-baseline-k8s.txt"
+  Invoke-HttpGet "$BaseUrl/chaos/hotel-latency" (Join-Path $Evidence "01-baseline-chaos")
+  $baselineChaos = Get-Content (Join-Path $Evidence "01-baseline-chaos") -Raw | ConvertFrom-Json
+  if ($baselineChaos.enabled) { throw "Baseline abort: latency fault unexpectedly enabled" }
+  Invoke-HttpGet "$BaseUrl/api/v2/flujo/1/1/1" (Join-Path $Evidence "01-baseline-flujo")
+  Assert-RealProviders (Join-Path $Evidence "01-baseline-flujo") "baseline"
+  Invoke-K6Round "baseline"
+  Capture-Logs "01-baseline-logs.txt"
 
-# Declarative arm/hold/disarm smoke (multi-pod)
-Set-Chaos "on" "toolkit"
-Start-Sleep -Seconds 3
-Invoke-HttpGet "$BaseUrl/api/v2/flujo/1/1/1" (Join-Path $Evidence "02-toolkit-flujo-under-fault")
-Set-Chaos "off" "toolkit"
+  # Declarative arm/hold/disarm smoke (multi-pod) — no cuenta como R0
+  Set-Chaos "on" "toolkit"
+  Start-Sleep -Seconds 3
+  Invoke-HttpGet "$BaseUrl/api/v2/flujo/1/1/1" (Join-Path $Evidence "02-toolkit-flujo-under-fault")
+  Set-Chaos "off" "toolkit"
 
-Set-Chaos "on" "r0"
-Invoke-HttpGet "$BaseUrl/api/v2/flujo/1/1/1" (Join-Path $Evidence "03-r0-flujo-sample")
-Invoke-K6Round "r0"
-Capture-Logs "03-r0-logs.txt"
-Set-Chaos "off" "r0"
+  Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.exp-intercloud-r0.yaml") "intercloud-r0" "false" "true"
+  Set-Chaos "on" "r0"
+  Invoke-HttpGet "$BaseUrl/api/v2/flujo/1/1/1" (Join-Path $Evidence "03-r0-flujo-sample")
+  Invoke-K6Round "r0"
+  Capture-Logs "03-r0-logs.txt"
+  Set-Chaos "off" "r0"
 
-Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.exp-intercloud-r1.yaml") "intercloud-r1" $ExpectedHotel
-Set-Chaos "on" "r1"
-Invoke-HttpGet "$BaseUrl/api/v2/flujo/1/1/1" (Join-Path $Evidence "04-r1-flujo-sample")
-Invoke-K6Round "r1"
-Capture-Logs "04-r1-logs.txt"
-Set-Chaos "off" "r1"
-
-# Restore production multicloud
-Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.yaml") "multicloud-real" $ExpectedHotel
-Save-K8sSnapshot "05-after-restore-k8s.txt"
-Invoke-HttpGet "$BaseUrl/health/ready" (Join-Path $Evidence "05-after-ready")
-Invoke-HttpGet "$BaseUrl/chaos/hotel-latency" (Join-Path $Evidence "05-after-chaos")
-Invoke-HttpGet "$BaseUrl/api/v2/flujo/1/1/1" (Join-Path $Evidence "05-after-flujo")
-Assert-RealProviders (Join-Path $Evidence "05-after-flujo") "after-restore"
-Capture-Logs "05-after-logs.txt"
+  Apply-ConfigMap (Join-Path $Root "k8s\aws\configmap.exp-intercloud-r1.yaml") "intercloud-r1" "true" "true"
+  Set-Chaos "on" "r1"
+  Invoke-HttpGet "$BaseUrl/api/v2/flujo/1/1/1" (Join-Path $Evidence "04-r1-flujo-sample")
+  Invoke-K6Round "r1"
+  Capture-Logs "04-r1-logs.txt"
+  Set-Chaos "off" "r1"
+}
+catch {
+  $liveFailed = $true
+  $liveError = $_
+  Write-Warning "LIVE intercloud failed: $_"
+  $_ | Out-File (Join-Path $Evidence "99-live-error.txt") -Encoding utf8
+}
+finally {
+  try {
+    Restore-StableMulticloud $(if ($liveFailed) { "error" } else { "success" })
+  }
+  catch {
+    Write-Warning "CRITICAL: restore failed: $_"
+    $_ | Out-File (Join-Path $Evidence "99-restore-error.txt") -Encoding utf8
+  }
+}
 
 function Read-Summary([string]$Round) {
   $p = Join-Path $Evidence "k6-$Round-summary.json"
@@ -249,7 +337,9 @@ $comparison = [ordered]@{
   runId = $RunId
   generatedAt = (Get-Date).ToUniversalTime().ToString("o")
   injectionPoint = "sports-outbound-hotel-client"
+  k6Profile = "load/k6/flujo-profile-shared.js"
   notMocks = $true
+  liveFailed = $liveFailed
   thresholdsAPriori = $thresholdsAPriori
   baseline = $b
   r0 = $r0
@@ -285,4 +375,9 @@ if ($b -and $r0 -and $r1) {
 
 ($comparison | ConvertTo-Json -Depth 10) | Out-File (Join-Path $Evidence "comparison.json") -Encoding utf8
 Copy-Item (Join-Path $Evidence "comparison.json") (Join-Path $Root "chaos\results\aws-intercloud-latest.json") -Force
+
+if ($liveFailed) {
+  throw "Intercloud live failed after restore attempt: $liveError"
+}
+
 Write-Host "DONE intercloud live. $($comparison.comparison.conclusion)"
