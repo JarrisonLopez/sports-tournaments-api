@@ -58,8 +58,12 @@ export async function ejecutarFlujo(
       });
     }
 
-    recordFlujoResult("success", Date.now() - started, {
+    const outcome =
+      resultado.status === "partial" ? ("success" as const) : ("success" as const);
+    recordFlujoResult(outcome, Date.now() - started, {
       trace_id: traceId,
+      flujo_status: resultado.status,
+      degraded: String(resultado.degraded),
     });
     return resultado;
   } catch (error) {

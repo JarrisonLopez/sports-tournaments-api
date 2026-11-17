@@ -6,6 +6,10 @@ import {
   resetHotelCircuitBreakerForTests,
 } from "../resilience/circuit-breaker";
 import { resolveResilienceConfig } from "../resilience/config";
+import {
+  buildHotelFallback,
+  isHotelRecoverableError,
+} from "../resilience/hotel-fallback";
 import { withTimeout } from "../resilience/timeout";
 import { buildOutboundTraceHeaders } from "./http-trace";
 
@@ -17,6 +21,7 @@ export interface HabitacionRemota {
   precioHabitacion: number;
   estadoHabitacion: string;
   tipoHabitacion: string;
+  origenResiliencia?: "fallback";
 }
 
 export class HotelConfigError extends Error {
@@ -39,7 +44,6 @@ export class HotelRequestError extends Error {
 export type HotelClientDeps = {
   fetch?: typeof fetch;
   env?: NodeJS.ProcessEnv;
-  /** Hook de laboratorio para inyectar latencia antes del fetch (chaos). */
   beforeRequest?: () => Promise<void>;
 };
 
@@ -81,7 +85,6 @@ export async function obtenerHabitacion(
           }
 
           const callFetch = async (signal?: AbortSignal) => {
-            // Latencia de laboratorio dentro del presupuesto de timeout.
             await applyHotelLatencyIfActive(Date.now(), signal);
 
             const response = await doFetch(url, {
@@ -118,16 +121,23 @@ export async function obtenerHabitacion(
       },
     );
 
-  if (!resilience.enabled) {
-    return invoke();
+  try {
+    if (!resilience.enabled) {
+      return invoke();
+    }
+
+    const breaker = getHotelCircuitBreaker({
+      failureThreshold: resilience.circuitFailureThreshold,
+      successThreshold: resilience.circuitSuccessThreshold,
+      openMs: resilience.circuitOpenMs,
+      name: "hotel",
+    });
+
+    return await breaker.exec(invoke);
+  } catch (error) {
+    if (resilience.hotelFallbackEnabled && isHotelRecoverableError(error)) {
+      return buildHotelFallback(habitacionId);
+    }
+    throw error;
   }
-
-  const breaker = getHotelCircuitBreaker({
-    failureThreshold: resilience.circuitFailureThreshold,
-    successThreshold: resilience.circuitSuccessThreshold,
-    openMs: resilience.circuitOpenMs,
-    name: "hotel",
-  });
-
-  return breaker.exec(invoke);
 }

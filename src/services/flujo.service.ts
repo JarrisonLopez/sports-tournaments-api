@@ -4,6 +4,7 @@ import { obtenerHabitacion } from "../clients/hotel.client";
 import { obtenerPelicula } from "../clients/cine.client";
 import { saveArtifact } from "../clients/object-storage.client";
 import { resolveFlujoOrchestrationMode } from "../config/flujo-orchestration";
+import { isDegradedHabitacion } from "../resilience/hotel-fallback";
 import { buscarPorId as buscarTorneoPorId } from "./torneo.service";
 
 const tracer = trace.getTracer("sports-api");
@@ -14,6 +15,8 @@ export type FlujoInput = {
   peliculaId: number;
   traceId: string;
 };
+
+export type FlujoStatus = "success" | "partial";
 
 export async function ejecutar(datos: FlujoInput) {
   return tracer.startActiveSpan(
@@ -42,19 +45,31 @@ export async function ejecutar(datos: FlujoInput) {
         let pelicula;
 
         if (mode === "parallel") {
-          // Compatibilidad histórica Entrega 2.
           [habitacion, pelicula] = await Promise.all([
             obtenerHabitacion(datos.habitacionId, datos.traceId),
             obtenerPelicula(datos.peliculaId, datos.traceId),
           ]);
         } else {
-          // Seguimiento #4: síncrono secuencial Hotel → Cine.
           habitacion = await obtenerHabitacion(
             datos.habitacionId,
             datos.traceId,
           );
           pelicula = await obtenerPelicula(datos.peliculaId, datos.traceId);
         }
+
+        const degradedDependencies: string[] = [];
+        if (isDegradedHabitacion(habitacion)) {
+          degradedDependencies.push("hotel");
+        }
+
+        const status: FlujoStatus =
+          degradedDependencies.length > 0 ? "partial" : "success";
+
+        span.setAttribute("flujo.status", status);
+        span.setAttribute(
+          "flujo.degraded_dependencies",
+          degradedDependencies.join(",") || "none",
+        );
 
         const artifact = {
           traceId: datos.traceId,
@@ -69,20 +84,26 @@ export async function ejecutar(datos: FlujoInput) {
 
         if (!objectStorageConfigured) {
           span.setAttribute("flujo.artifact", "skipped");
-          span.setAttribute("flujo.outcome", "success");
+          span.setAttribute("flujo.outcome", status);
           return {
             ...artifact,
             artifact: null,
+            status,
+            degraded: degradedDependencies.length > 0,
+            degradedDependencies,
           };
         }
 
         const referencia = await saveArtifact(artifact, datos.traceId);
         span.setAttribute("flujo.artifact", "stored");
-        span.setAttribute("flujo.outcome", "success");
+        span.setAttribute("flujo.outcome", status);
 
         return {
           ...artifact,
           artifact: referencia,
+          status,
+          degraded: degradedDependencies.length > 0,
+          degradedDependencies,
         };
       } catch (error) {
         span.recordException(error as Error);

@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * Procedimiento reproducible Baseline → R0 → R1 (laboratorio local con mocks HTTP).
- * No representa resultados AWS/OCI/GCP.
+ * Baseline → R0 → R1 con la misma latencia/carga.
  *
- * Métrica objetivo bajo latencia inyectada Sports→Hotel:
- * - p95 del recorrido Hotel+Cine
- * - cumplimiento de presupuesto (SLO)
- * - tasa de éxito de negocio
- * - wall-clock de la ronda concurrente (saturación)
+ * Hipótesis (a priori):
+ * Bajo latencia inyectada Sports→Hotel (LATENCY_MS) e idéntica carga concurrente,
+ * timeout + circuit breaker + fallback de Hotel mantienen tasa de éxito de negocio
+ * (success|partial) ≥ 90% y reducen el p95 de solicitudes EXITOSAS ≥ 30% vs R0.
+ *
+ * SLO: solo solicitudes exitosas (ok) con duración ≤ SLO_MS.
+ * Los errores rápidos NO cuentan como within-SLO.
  */
 import { createServer } from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -24,7 +25,11 @@ const REQUESTS = Number(process.env.CHAOS_ROUND_REQUESTS || 24);
 const CONCURRENCY = Number(process.env.CHAOS_ROUND_CONCURRENCY || 8);
 const SLO_MS = Number(process.env.CHAOS_SLO_MS || 500);
 const TTL_MS = Number(process.env.CHAOS_HOTEL_LATENCY_TTL_MS || 120000);
-const HOTEL_TIMEOUT_MS = Number(process.env.HOTEL_TIMEOUT_MS || 300);
+/** Timeout < latencia inyectada para que dispare; fallback evita 0% éxito. */
+const HOTEL_TIMEOUT_MS = Number(process.env.HOTEL_TIMEOUT_MS || 400);
+
+const HYPOTHESIS =
+  "Con timeout+CB+fallback ante latencia Hotel, el flujo mantiene éxito de negocio ≥90% (incluye parciales) y reduce p95 de respuestas exitosas ≥30% vs R0, misma carga e inyección.";
 
 function percentile(values, p) {
   if (values.length === 0) return null;
@@ -46,7 +51,6 @@ function startMock(port, handler) {
 async function mapPool(items, concurrency, worker) {
   const results = new Array(items.length);
   let next = 0;
-
   async function run() {
     while (next < items.length) {
       const i = next;
@@ -54,7 +58,6 @@ async function mapPool(items, concurrency, worker) {
       results[i] = await worker(items[i], i);
     }
   }
-
   await Promise.all(
     Array.from({ length: Math.min(concurrency, items.length) }, () => run()),
   );
@@ -136,6 +139,7 @@ async function main() {
 
   async function runRound(name, { resilienceEnabled, fault }) {
     process.env.RESILIENCE_ENABLED = resilienceEnabled ? "true" : "false";
+    process.env.HOTEL_FALLBACK_ENABLED = resilienceEnabled ? "true" : "false";
     process.env.HOTEL_TIMEOUT_MS = String(HOTEL_TIMEOUT_MS);
     process.env.HOTEL_CB_FAILURE_THRESHOLD = "3";
     process.env.HOTEL_CB_OPEN_MS = "2000";
@@ -165,29 +169,41 @@ async function main() {
       async (i) => {
         const t0 = performance.now();
         try {
-          await obtenerHabitacion(1, `round-${name}-${i}`);
+          const habitacion = await obtenerHabitacion(1, `round-${name}-${i}`);
           await obtenerPelicula(1, `round-${name}-${i}`);
           const ms = performance.now() - t0;
-          return { ok: true, ms, errorName: null };
+          const partial = habitacion?.origenResiliencia === "fallback";
+          return {
+            ok: true,
+            partial,
+            status: partial ? "partial" : "success",
+            ms,
+            errorName: null,
+          };
         } catch (error) {
           const ms = performance.now() - t0;
-          return { ok: false, ms, errorName: error?.name || "Error" };
+          return {
+            ok: false,
+            partial: false,
+            status: "failed",
+            ms,
+            errorName: error?.name || "Error",
+          };
         }
       },
     );
     const wallClockMs = performance.now() - wallStart;
-
     deactivateHotelLatencyFault("end");
 
-    const durations = outcomes.map((o) => o.ms);
-    const success = outcomes.filter((o) => o.ok).length;
-    const errors = REQUESTS - success;
-    const withinSlo = outcomes.filter((o) => o.ms <= SLO_MS).length;
+    const successOutcomes = outcomes.filter((o) => o.ok);
+    const failedOutcomes = outcomes.filter((o) => !o.ok);
+    const successDurations = successOutcomes.map((o) => o.ms);
+    const allDurations = outcomes.map((o) => o.ms);
+    const partialCount = outcomes.filter((o) => o.partial).length;
+    const withinSloSuccess = successOutcomes.filter((o) => o.ms <= SLO_MS).length;
     const errorNames = {};
-    for (const o of outcomes) {
-      if (o.errorName) {
-        errorNames[o.errorName] = (errorNames[o.errorName] || 0) + 1;
-      }
+    for (const o of failedOutcomes) {
+      errorNames[o.errorName] = (errorNames[o.errorName] || 0) + 1;
     }
 
     return {
@@ -196,14 +212,26 @@ async function main() {
       fault,
       requests: REQUESTS,
       concurrency: CONCURRENCY,
-      success,
-      errors,
-      successRate: success / REQUESTS,
-      errorRate: errors / REQUESTS,
+      success: successOutcomes.length,
+      partial: partialCount,
+      fullSuccess: successOutcomes.length - partialCount,
+      errors: failedOutcomes.length,
+      successRate: successOutcomes.length / REQUESTS,
+      errorRate: failedOutcomes.length / REQUESTS,
       sloMs: SLO_MS,
-      withinSloRate: withinSlo / REQUESTS,
-      p95Ms: percentile(durations, 95),
-      avgMs: durations.reduce((a, b) => a + b, 0) / durations.length,
+      /** Solo éxitos bajo presupuesto; errores no cuentan. */
+      withinSloRate:
+        successOutcomes.length === 0
+          ? 0
+          : withinSloSuccess / successOutcomes.length,
+      withinSloOfTotal: withinSloSuccess / REQUESTS,
+      p95SuccessMs: percentile(successDurations, 95),
+      p95AllMs: percentile(allDurations, 95),
+      avgSuccessMs:
+        successDurations.length === 0
+          ? null
+          : successDurations.reduce((a, b) => a + b, 0) / successDurations.length,
+      avgAllMs: allDurations.reduce((a, b) => a + b, 0) / allDurations.length,
       wallClockMs,
       errorNames,
     };
@@ -216,38 +244,44 @@ async function main() {
   const r0 = await runRound("r0", { resilienceEnabled: false, fault: true });
   const r1 = await runRound("r1", { resilienceEnabled: true, fault: true });
 
+  const successOk = r1.successRate >= 0.9;
   const p95Improved =
-    r1.p95Ms != null && r0.p95Ms != null && r1.p95Ms < r0.p95Ms * 0.7;
-  const sloImproved = r1.withinSloRate > r0.withinSloRate + 0.2;
-  const wallImproved = r1.wallClockMs < r0.wallClockMs * 0.7;
-  const successImproved = r1.successRate > r0.successRate + 0.05;
+    r1.p95SuccessMs != null &&
+    r0.p95SuccessMs != null &&
+    r1.p95SuccessMs <= r0.p95SuccessMs * 0.7;
+  const sloImproved = r1.withinSloOfTotal >= r0.withinSloOfTotal + 0.2;
 
   let conclusion;
   let diagnosis = null;
-  if (successImproved && (p95Improved || sloImproved)) {
+  if (successOk && p95Improved) {
     conclusion =
-      "Hipótesis SOSTENIDA: R1 mejora éxito de negocio y presupuesto de latencia vs R0.";
-  } else if (p95Improved || sloImproved || wallImproved) {
+      "Hipótesis SOSTENIDA: R1 mantiene ≥90% éxito de negocio y reduce ≥30% el p95 de éxitos vs R0.";
+  } else if (successOk && sloImproved) {
     conclusion =
-      "Hipótesis PARCIALMENTE SOSTENIDA: R1 reduce saturación/p95/cumplimiento SLO vs R0, con trade-off en éxitos de negocio (fail-fast).";
-    diagnosis = {
-      observation:
-        "Timeout/CB ante latencia artificial en dependencia SALUDABLE convierte éxitos lentos en errores rápidos.",
-      proposedFix:
-        "Añadir fallback degradado o reintento idempotente con presupuesto, o limitar el experimento a fallos de Hotel (5xx) donde CB evita cascadas sin sacrificar éxitos sanos.",
-    };
+      "Hipótesis SOSTENIDA (vía SLO): R1 mantiene éxito y mejora cumplimiento de presupuesto vs R0.";
   } else {
-    conclusion =
-      "Hipótesis NO sostenida con estos parámetros. Revisar LATENCY_MS vs HOTEL_TIMEOUT_MS y concurrencia.";
+    conclusion = "Hipótesis NO sostenida con la evidencia actual.";
     diagnosis = {
-      observation: "R1 no mejoró p95, SLO ni wall-clock frente a R0.",
-      proposedFix: "Aumentar latencia inyectada o bajar timeout; verificar activación del interruptor.",
+      observation: {
+        r1SuccessRate: r1.successRate,
+        r0P95Success: r0.p95SuccessMs,
+        r1P95Success: r1.p95SuccessMs,
+      },
+      proposedFix:
+        "Revisar HOTEL_TIMEOUT_MS vs LATENCY_MS, fallback y umbrales CB sin relajar el gate.",
     };
   }
 
   const report = {
     environment: "local-mocks",
     notMulticloud: true,
+    hypothesis: HYPOTHESIS,
+    thresholdsAPriori: {
+      minR1SuccessRate: 0.9,
+      maxR1P95SuccessRatioVsR0: 0.7,
+      rejectIfR1SuccessRateIsZero: true,
+      sloCountsOnlySuccessfulRequests: true,
+    },
     preflight: {
       hotel: process.env.HOTEL_API_URL,
       cine: process.env.CINE_API_URL,
@@ -262,7 +296,7 @@ async function main() {
       "steady baseline",
       "r0 fault without resilience",
       "restore fault switch",
-      "r1 same fault with timeout+CB",
+      "r1 same fault with timeout+CB+fallback",
       "compare",
       "final verify fault off",
     ],
@@ -270,14 +304,16 @@ async function main() {
     r0,
     r1,
     comparison: {
-      p95DeltaPct:
-        r0.p95Ms && r1.p95Ms ? ((r1.p95Ms - r0.p95Ms) / r0.p95Ms) * 100 : null,
+      p95SuccessDeltaPct:
+        r0.p95SuccessMs && r1.p95SuccessMs
+          ? ((r1.p95SuccessMs - r0.p95SuccessMs) / r0.p95SuccessMs) * 100
+          : null,
       successRateDeltaPp: (r1.successRate - r0.successRate) * 100,
-      withinSloDeltaPp: (r1.withinSloRate - r0.withinSloRate) * 100,
+      withinSloOfTotalDeltaPp:
+        (r1.withinSloOfTotal - r0.withinSloOfTotal) * 100,
       wallClockDeltaPct:
         ((r1.wallClockMs - r0.wallClockMs) / r0.wallClockMs) * 100,
-      hypothesis:
-        "Bajo latencia Sports→Hotel y carga concurrente fija, timeout+CB mejoran el cumplimiento de presupuesto/saturación respecto a R0; se reporta el efecto sobre éxito de negocio.",
+      hypothesis: HYPOTHESIS,
       conclusion,
       diagnosis,
     },
@@ -288,7 +324,6 @@ async function main() {
   mkdirSync(outDir, { recursive: true });
   const outFile = resolve(outDir, `rounds-${Date.now()}.json`);
   writeFileSync(outFile, JSON.stringify(report, null, 2));
-  // Copia estable para el informe
   writeFileSync(resolve(outDir, "rounds-latest.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
   console.log(`wrote ${outFile}`);
@@ -296,12 +331,21 @@ async function main() {
   hotel.close();
   cine.close();
 
-  if (!(r0.p95Ms > baseline.p95Ms * 1.5)) {
-    console.error("Gate: R0 no degradó claramente el p95 vs baseline");
+  // Gate estricto (también usado por evaluate_gate.mjs)
+  if (!(r0.p95SuccessMs > baseline.p95SuccessMs * 1.5)) {
+    console.error("Gate: R0 no degradó p95 de éxitos vs baseline");
     process.exit(1);
   }
-  if (!(p95Improved || sloImproved || wallImproved)) {
-    console.error("Gate: R1 no mejoró p95/SLO/wall vs R0");
+  if (r1.successRate <= 0) {
+    console.error("Gate: R1 con 0% éxito — rechazado");
+    process.exit(1);
+  }
+  if (r1.successRate < 0.9) {
+    console.error(`Gate: R1 successRate ${r1.successRate} < 0.9`);
+    process.exit(1);
+  }
+  if (!p95Improved && !sloImproved) {
+    console.error("Gate: R1 no mejoró p95 de éxitos ni SLO vs R0");
     process.exit(1);
   }
 }

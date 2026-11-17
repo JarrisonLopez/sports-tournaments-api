@@ -12,7 +12,7 @@ describe("hotel client resilience", () => {
     resetHotelCircuitBreakerForTests();
   });
 
-  it("aplica timeout cuando RESILIENCE_ENABLED=true", async () => {
+  it("aplica timeout cuando RESILIENCE_ENABLED=true sin fallback", async () => {
     const fetchMock = vi.fn().mockImplementation(
       (_url: string, init?: { signal?: AbortSignal }) =>
         new Promise((_resolve, reject) => {
@@ -29,12 +29,40 @@ describe("hotel client resilience", () => {
         env: {
           HOTEL_API_URL: "http://hotel.test",
           RESILIENCE_ENABLED: "true",
+          HOTEL_FALLBACK_ENABLED: "false",
           HOTEL_TIMEOUT_MS: "40",
           HOTEL_CB_FAILURE_THRESHOLD: "10",
         },
         fetch: fetchMock as unknown as typeof fetch,
       }),
     ).rejects.toBeInstanceOf(HotelTimeoutError);
+  });
+
+  it("usa fallback de negocio cuando timeout y fallback están activos", async () => {
+    const fetchMock = vi.fn().mockImplementation(
+      (_url: string, init?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          const t = setTimeout(() => reject(new Error("late")), 500);
+          init?.signal?.addEventListener("abort", () => {
+            clearTimeout(t);
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          });
+        }),
+    );
+
+    const habitacion = await obtenerHabitacion(9, "t", {
+      env: {
+        HOTEL_API_URL: "http://hotel.test",
+        RESILIENCE_ENABLED: "true",
+        HOTEL_FALLBACK_ENABLED: "true",
+        HOTEL_TIMEOUT_MS: "40",
+        HOTEL_CB_FAILURE_THRESHOLD: "10",
+      },
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    expect(habitacion.origenResiliencia).toBe("fallback");
+    expect(habitacion.id).toBe(9);
   });
 
   it("abre el circuit breaker tras fallos repetidos", async () => {
@@ -47,6 +75,7 @@ describe("hotel client resilience", () => {
     const env = {
       HOTEL_API_URL: "http://hotel.test",
       RESILIENCE_ENABLED: "true",
+      HOTEL_FALLBACK_ENABLED: "false",
       HOTEL_TIMEOUT_MS: "1000",
       HOTEL_CB_FAILURE_THRESHOLD: "2",
       HOTEL_CB_OPEN_MS: "10000",

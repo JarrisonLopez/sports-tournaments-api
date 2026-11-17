@@ -118,6 +118,9 @@ describe("Pruebas de flujo V2", () => {
         bucket: "sports-tournaments-artifacts",
         object: "flujos/trace-1.json",
       },
+      status: "success",
+      degraded: false,
+      degradedDependencies: [],
     });
 
     expect(obtenerHabitacion).toHaveBeenCalledWith(2, "trace-1");

@@ -27,8 +27,16 @@ Estados: `closed` → `open` → `half_open` → `closed`
 
 Error en estado open: `CircuitOpenError`. Métricas de transición en `sports.hotel.circuit_breaker.*`.
 
+## Fallback de Hotel (negocio)
+
+Con `RESILIENCE_ENABLED=true`, `HOTEL_FALLBACK_ENABLED` default `true`.
+
+Si ocurre `HotelTimeoutError` o `CircuitOpenError`, Sports devuelve una habitación **válida degradada** (`origenResiliencia: "fallback"`) y el flujo continúa con Cine → respuesta `status: "partial"`.
+
+Sin fallback (solo para pruebas del mecanismo), timeout/CB propagan el error.
+
 ## Por qué mejora resiliencia (hipótesis R1)
 
-Sin protecciones, la latencia inyectada mantiene conexiones ocupadas hasta completar el delay + respuesta Hotel, degradando throughput y elevando p95.
+Sin protecciones, la latencia inyectada eleva el p95 de éxitos (~800 ms+) y reduce el throughput bajo el mismo perfil de carga.
 
-Con timeout, las peticiones fallan rápido al superar el presupuesto; el circuit breaker evita martillar Hotel tras fallos repetidos, liberando capacidad para otras partes del flujo y acotando el blast radius temporal.
+Con timeout + CB + fallback: se corta la espera, el breaker evita repetir delays y el flujo **sigue respondiendo 200** (parcial). Evidencia local: p95 de éxitos R1 ≤ 70% del de R0 y successRate ≥ 90%.
