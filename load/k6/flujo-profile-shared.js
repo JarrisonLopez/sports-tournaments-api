@@ -9,7 +9,11 @@
  *   45s → 4 VU
  *   15s → 0 VU
  * Sleep: 0.3 s
- * Thresholds: http_req_failed rate<0.95; http_req_duration p(95)<15000; flujo_available rate>0.05
+ * Thresholds embebidos (soft / runner): http_req_failed rate<0.95; p(95)<15000; flujo_available rate>0.05
+ *   → demasiado permisivos para validar hipótesis; no relajar a posteriori.
+ * Umbrales a priori de evaluación (post-run): ver docs/seguimiento-4/EXPERIMENTO_HOTEL_503.md
+ *
+ * Summary JSON registra: full/partial/failed, availability, errorRate, p95, iterations, ROUND, RUN_ID.
  *
  * Ejecución:
  *   BASE_URL=http://3.21.120.51:30080 ROUND=baseline RUN_ID=shared-1 \

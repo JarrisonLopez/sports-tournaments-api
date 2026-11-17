@@ -31,9 +31,11 @@ Error en estado open: `CircuitOpenError`. Métricas de transición en `sports.ho
 
 Con `RESILIENCE_ENABLED=true`, `HOTEL_FALLBACK_ENABLED` default `true`.
 
-Si ocurre `HotelTimeoutError` o `CircuitOpenError`, Sports devuelve una habitación **válida degradada** (`origenResiliencia: "fallback"`) y el flujo continúa con Cine → respuesta `status: "partial"`.
+Si ocurre `HotelTimeoutError`, `CircuitOpenError` o `HotelRequestError` **5xx** (p. ej. HTTP 503 de Hotel OCI), Sports devuelve una habitación **válida degradada** (`origenResiliencia: "fallback"`) y el flujo continúa con Cine → respuesta `status: "partial"`.
 
-Sin fallback (solo para pruebas del mecanismo), timeout/CB propagan el error.
+Los 4xx (p. ej. 404) **no** usan fallback. Sin fallback (solo para pruebas del mecanismo), timeout/CB/5xx propagan el error.
+
+Experimento Samuel HTTP 503: ver `EXPERIMENTO_HOTEL_503.md` (`CHAOS_LAB_ENABLED=false`).
 
 ## Por qué mejora resiliencia (hipótesis R1)
 
