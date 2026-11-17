@@ -9,14 +9,16 @@ data:
   DB_PORT: "3306"
   DB_USER: sports_user
   DB_NAME: sports_db
-  API_VERSION: "4.1.0"
+  API_VERSION: "4.1.1"
   API_TRACK: "stable"
   # Sustituir por URLs reales de Samuel (OCI) y Daniel (GCP) cuando existan.
   HOTEL_API_URL: "http://hotel-mock:8081"
   CINE_API_URL: "http://cine-mock:8082"
   OBJECT_STORAGE_API_URL: ""
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+  # Vacío en EC2 si no hay Collector; la API usa NoopSpanProcessor.
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
   FLUJO_ORCHESTRATION_MODE: "sequential"
-  HOTEL_TIMEOUT_MS: "2000"
-  RESILIENCE_ENABLED: "true"
+  HOTEL_TIMEOUT_MS: "400"
+  HOTEL_FALLBACK_ENABLED: "true"
+  RESILIENCE_ENABLED: "false"
   CHAOS_LAB_ENABLED: "false"

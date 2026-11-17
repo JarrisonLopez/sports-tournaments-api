@@ -77,10 +77,14 @@ locals {
   user_data = <<-EOF
     #!/bin/bash
     set -euxo pipefail
-    dnf install -y curl tar
-    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode 644 --disable traefik" sh -
-    mkdir -p /opt/sports
-    echo "k3s ready" > /opt/sports/bootstrap.status
+    dnf update -y || true
+    dnf install -y curl tar gzip container-selinux iptables
+    # k3s incluye containerd; sin Traefik (exponemos NodePort 30080).
+    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --write-kubeconfig-mode 644 --disable traefik" sh -
+    mkdir -p /opt/sports/images /opt/sports/manifests
+    ln -sfn /usr/local/bin/kubectl /usr/bin/kubectl || true
+    echo "k3s ready $(date -Is)" > /opt/sports/bootstrap.status
+    systemctl is-active k3s
   EOF
 }
 

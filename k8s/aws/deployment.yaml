@@ -32,7 +32,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: sports-tournaments-api
-          image: sports-tournaments-api:4.1.0
+          image: sports-tournaments-api:4.1.1
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

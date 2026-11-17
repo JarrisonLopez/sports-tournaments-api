@@ -27,6 +27,12 @@ lab/.runtime/
 
 # Terraform local cache. .terraform.lock.hcl queda fuera de esta carpeta y se versiona.
 .terraform/
+infra/aws/terraform/.provider-mirror/
+infra/aws/terraform/terraform.rc.lab
+infra/aws/terraform/terraform.tfvars.plancheck
+infra/aws/terraform/tfplan-lab.bin
+infra/aws/terraform/plan-output.txt
+infra/aws/.tools/
 
 # Estado local, copias de respaldo y bloqueo local de estado
 *.tfstate

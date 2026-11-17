@@ -18,8 +18,8 @@ variable "project_name" {
 
 variable "instance_type" {
   type        = string
-  description = "Tipo EC2. t3.small basta para k3s + 2 pods + MySQL lab."
-  default     = "t3.small"
+  description = "Tipo EC2. t3.medium (4 GiB) recomendado para k3s + 2 réplicas Sports + MySQL lab; t3.small (2 GiB) queda justo."
+  default     = "t3.medium"
 }
 
 variable "ssh_ingress_cidr" {
