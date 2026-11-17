@@ -1,0 +1,4 @@
+﻿HTTP=200
+startedAtUtc=2026-11-17T04:35:17.3762419Z
+endedAtUtc=2026-11-17T04:35:19.8791681Z
+x-trace-id=w3c-one-20261116233411-flujo
