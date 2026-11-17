@@ -12,6 +12,7 @@ infra/aws/terraform/*.tfvars
 chaos/results/**
 !chaos/results/.gitkeep
 !chaos/results/rounds-latest.json
+!chaos/results/aws-rounds-latest.json
 !chaos/results/fixtures/
 !chaos/results/fixtures/**
 !chaos/results/chaos-toolkit-journal.json
@@ -24,6 +25,7 @@ load/results/**
 !load/results/r1-k6-*.json
 !load/results/k6-*-summary.json
 !load/results/aws-validate-*.json
+!load/results/*-aws-rounds-*.json
 lab/.runtime/
 
 # Terraform local cache. .terraform.lock.hcl queda fuera de esta carpeta y se versiona.
