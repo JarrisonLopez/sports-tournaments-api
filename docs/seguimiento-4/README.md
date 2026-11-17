@@ -11,6 +11,18 @@
 | `INFORME.md` | Informe ≤6 páginas |
 | `DEMO_SCRIPT.md` | Guion de clase |
 | `RELEASE.md` | SemVer y publicación |
+| `evidence/aws-validation/` | Validación Sports en AWS (mocks lab) |
+| `evidence/multicloud-real/` | Integración real AWS→OCI→GCP |
+
+## URLs activas (lab)
+
+| Servicio | URL |
+|---|---|
+| Sports AWS | http://3.21.120.51:30080 |
+| Hotel OCI | http://149.130.165.30 |
+| Cine GCP | http://35.239.107.54 |
+
+Rollback mocks: `k8s/aws/configmap.lab-mocks.yaml`
 
 ## Comandos PowerShell rápidos
 

@@ -27,7 +27,7 @@ Modo `parallel` (`FLUJO_ORCHESTRATION_MODE=parallel`) conserva `Promise.all` his
 | URL pública Hotel | Base URL sin slash final, alcanzable desde Sports AWS |
 | Endpoint | `GET /api/v2/habitacion/:id` |
 | Cabeceras entrantes | Debe aceptar `x-trace-id` y, si es posible, `traceparent` / `tracestate` |
-| Respuesta 200 | JSON con al menos: `id`, `numeroHabitacion`, `precioHabitacion`, `estadoHabitacion`, `tipoHabitacion` |
+| Respuesta 200 | JSON con al menos: `id`, `numeroHabitacion`, `precioHabitacion` (number **o** string decimal), `estadoHabitacion`, `tipoHabitacion` |
 | Errores | 404 si no existe; 5xx si falla interno |
 | Health | Recomendado `GET /health/live` o equivalente para preflight |
 | Observabilidad | Reenviar/registrar `x-trace-id`; exportar OTLP al Collector/Grafana compartido |
@@ -45,10 +45,10 @@ Ejemplo de respuesta esperada:
 }
 ```
 
-Variable en Sports:
+Variable en Sports (activa):
 
 ```text
-HOTEL_API_URL=https://<host-hotel-oci>
+HOTEL_API_URL=http://149.130.165.30
 ```
 
 ## Qué necesita configurar Daniel (Cine / GCP)
@@ -58,7 +58,7 @@ HOTEL_API_URL=https://<host-hotel-oci>
 | URL pública Cine | Base URL sin slash final |
 | Endpoint | `GET /api/v2/peliculas/:id` (prefijo `/api/v2` + ruta `/peliculas/:id` del repo) |
 | Cabeceras | Aceptar `x-trace-id` (el código V2 de Cine ya lo usa) y `traceparent` si es posible |
-| Respuesta 200 | JSON con al menos: `id`, `nombre`, `duracion`, `genero`, `descripcion` |
+| Respuesta 200 | Plano `{id,nombre,...}` **o** sobre `{ origen, traceId, pelicula:{...} }` (Sports acepta ambos) |
 | Errores | 404 / 5xx coherentes |
 | Health | `GET /api/v2/health` u otro health documentado |
 | Observabilidad | Correlación por `x-trace-id` + OTLP hacia Grafana compartido |
@@ -75,10 +75,10 @@ Ejemplo:
 }
 ```
 
-Variable en Sports:
+Variable en Sports (activa):
 
 ```text
-CINE_API_URL=https://<host-cine-gcp>
+CINE_API_URL=http://35.239.107.54
 ```
 
 ## Cabeceras que Sports envía

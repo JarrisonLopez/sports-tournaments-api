@@ -11,14 +11,13 @@ data:
   DB_NAME: sports_db
   API_VERSION: "4.1.1"
   API_TRACK: "stable"
-  # Sustituir por URLs reales de Samuel (OCI) y Daniel (GCP) cuando existan.
-  HOTEL_API_URL: "http://hotel-mock:8081"
-  CINE_API_URL: "http://cine-mock:8082"
+  # Multicloud real (Samuel OCI / Daniel GCP). Rollback: k8s/aws/configmap.lab-mocks.yaml
+  HOTEL_API_URL: "http://149.130.165.30"
+  CINE_API_URL: "http://35.239.107.54"
   OBJECT_STORAGE_API_URL: ""
-  # Vacío en EC2 si no hay Collector; la API usa NoopSpanProcessor.
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
   FLUJO_ORCHESTRATION_MODE: "sequential"
-  HOTEL_TIMEOUT_MS: "400"
+  HOTEL_TIMEOUT_MS: "2000"
   HOTEL_FALLBACK_ENABLED: "true"
-  RESILIENCE_ENABLED: "false"
+  RESILIENCE_ENABLED: "true"
   CHAOS_LAB_ENABLED: "false"
