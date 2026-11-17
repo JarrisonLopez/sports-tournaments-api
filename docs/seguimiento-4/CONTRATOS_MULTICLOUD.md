@@ -96,12 +96,20 @@ HOTEL_API_URL=
 CINE_API_URL=
 OBJECT_STORAGE_API_URL=          # vacío = omitir persistencia GCS en lab
 FLUJO_ORCHESTRATION_MODE=sequential
-OTEL_EXPORTER_OTLP_ENDPOINT=
+OTEL_SERVICE_NAME=sports-api
+OTEL_TRACES_EXPORTER=otlp
+OTEL_METRICS_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_ENDPOINT=https://hotel-otel-lab:31443
+OTEL_EXPORTER_OTLP_CERTIFICATE=/etc/otel/otel-lab-ca.crt
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic …  # Secret; no ConfigMap
 HOTEL_TIMEOUT_MS=2000
 RESILIENCE_ENABLED=true|false    # false en R0, true en R1 (solo lab)
 CHAOS_LAB_ENABLED=true|false
 CHAOS_FAULT_TOKEN=               # >=32 chars; no es auth pública arbitraria
 ```
+
+Collector OCI (Samuel): ver `OTLP_OCI.md`. Perfil k6 compartido: `load/k6/flujo-profile-shared.js`.
 
 ## Estado de verificación remota
 

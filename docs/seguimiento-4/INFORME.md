@@ -61,7 +61,7 @@ Orquestación: `scripts/chaos/run_aws_rounds.ps1`. Hallazgo operativo: un `env` 
 
 ## 6. Observabilidad
 
-Logs correlacionan `traceId` y `otelTraceId`. Sin Collector OTLP compartido en el lab (`OTEL_EXPORTER_OTLP_ENDPOINT` vacío): hay instrumentación y logs, **no** spans exportados a un backend común. Pendiente: endpoint OTLP de laboratorio (Samuel/Grafana) sin infra AWS adicional.
+Logs correlacionan `traceId` y `otelTraceId`. Configuración OTLP hacia Collector OCI de Samuel (`https://hotel-otel-lab:31443` vía hostAlias, protocol `http/protobuf`, Basic + CA en Secrets). Código honra `OTEL_*` (Noop si endpoint vacío o exporter=`none`). **Pendiente externo:** token + `otel-lab-ca.crt` de Samuel para confirmar recepción real de spans/métricas. Detalle: `OTLP_OCI.md`.
 
 ## 7. Dos patrones de resiliencia
 
@@ -78,5 +78,5 @@ Apoyo en orquestación AWS, ConfigMaps de experimento, clasificación k6 full/pa
 - Rondas AWS con **mocks** ya medidas (`aws-rounds-20261116215016`).  
 - Rondas **intercloud** (Hotel OCI real) preparadas en `EXPERIMENTO_INTERCLOUD.md`; ejecución live pendiente de ventana con Samuel (`-AuthorizeIntercloud`).  
 - Estado de caos es **por pod** → armar ambas réplicas.  
-- Sin HA multi-nodo; sin backend OTLP compartido.  
-- Backlog: autorización Samuel → ejecutar intercloud; confirmar `x-trace-id` en logs Hotel/Cine; OTLP de lab; demo.
+- Sin HA multi-nodo.  
+- Backlog: token/CA OTEL de Samuel → export verificada; autorización Samuel → intercloud; confirmar continuidad de traza en Hotel/Cine; demo.

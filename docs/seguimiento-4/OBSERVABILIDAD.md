@@ -2,13 +2,19 @@
 
 ## Exportación
 
-Sports exporta traces y métricas OTLP/HTTP cuando:
+Sports exporta traces y métricas OTLP/HTTP cuando hay endpoint (si falta → Noop / sin readers):
 
 ```text
-OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+OTEL_SERVICE_NAME=sports-api
+OTEL_TRACES_EXPORTER=otlp
+OTEL_METRICS_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_ENDPOINT=https://hotel-otel-lab:31443
+OTEL_EXPORTER_OTLP_CERTIFICATE=/etc/otel/otel-lab-ca.crt
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic …   # Secret, no ConfigMap
 ```
 
-Samuel prepara Grafana compartido. Sports no embebe dashboards propietarios; exporta a Collector.
+Lab compartido OCI (Samuel): ver `OTLP_OCI.md`. Rollback: `k8s/aws/configmap.otel-rollback.yaml`.
 
 ## Señales del flujo evaluado
 

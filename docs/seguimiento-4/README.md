@@ -5,6 +5,7 @@
 | `ARQUITECTURA_AWS.md` | Decisión k3s/EC2 vs EKS |
 | `CONTRATOS_MULTICLOUD.md` | Contratos para Samuel y Daniel |
 | `OBSERVABILIDAD.md` | Métricas y OTLP |
+| `OTLP_OCI.md` | Collector OCI Samuel (auth/TLS/rollout) |
 | `EXPERIMENTO_LATENCIA.md` | Experimento + interruptor |
 | `EXPERIMENTO_INTERCLOUD.md` | Latencia Sports→Hotel OCI (rúbrica) |
 | `RESILIENCIA.md` | Timeout y circuit breaker |
@@ -16,6 +17,7 @@
 | `evidence/multicloud-real/` | Integración real AWS→OCI→GCP |
 | `evidence/aws-rounds/` | Baseline / R0 / R1 medidos en k3s AWS (mocks) |
 | `evidence/aws-intercloud/` | Preparación / rondas intercloud vs Hotel OCI |
+| `evidence/otel-oci/` | Conectividad OTLP → Collector OCI + traza muestra |
 
 ## URLs activas (lab)
 
