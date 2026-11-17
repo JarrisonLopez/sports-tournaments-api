@@ -1,0 +1,137 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "18"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"sports-tournaments-api"},"name":"sports-tournaments-api","namespace":"sports-lab"},"spec":{"replicas":2,"selector":{"matchLabels":{"app":"sports-tournaments-api"}},"strategy":{"rollingUpdate":{"maxSurge":0,"maxUnavailable":1},"type":"RollingUpdate"},"template":{"metadata":{"labels":{"app":"sports-tournaments-api"}},"spec":{"affinity":{"podAntiAffinity":{"preferredDuringSchedulingIgnoredDuringExecution":[{"podAffinityTerm":{"labelSelector":{"matchLabels":{"app":"sports-tournaments-api"}},"topologyKey":"kubernetes.io/hostname"},"weight":100}]}},"containers":[{"envFrom":[{"configMapRef":{"name":"sports-api-config"}},{"secretRef":{"name":"sports-api-secrets"}},{"secretRef":{"name":"sports-otel-secrets","optional":true}}],"image":"sports-tournaments-api:4.1.1","imagePullPolicy":"IfNotPresent","livenessProbe":{"failureThreshold":3,"httpGet":{"path":"/health/live","port":"http"},"initialDelaySeconds":20,"periodSeconds":10,"timeoutSeconds":3},"name":"sports-tournaments-api","ports":[{"containerPort":8080,"name":"http"}],"readinessProbe":{"failureThreshold":3,"httpGet":{"path":"/health/ready","port":"http"},"initialDelaySeconds":15,"periodSeconds":10,"timeoutSeconds":3},"resources":{"limits":{"cpu":"500m","memory":"256Mi"},"requests":{"cpu":"100m","memory":"128Mi"}},"volumeMounts":[{"mountPath":"/etc/otel","name":"otel-ca","readOnly":true}]}],"hostAliases":[{"hostnames":["otel-lab.local","hotel-otel-lab"],"ip":"157.137.233.183"}],"volumes":[{"name":"otel-ca","secret":{"items":[{"key":"otel-lab-ca.crt","path":"otel-lab-ca.crt"}],"optional":true,"secretName":"sports-otel-ca"}}]}}}}
+  creationTimestamp: "2026-11-17T01:43:06Z"
+  generation: 18
+  labels:
+    app: sports-tournaments-api
+  name: sports-tournaments-api
+  namespace: sports-lab
+  resourceVersion: "6978"
+  uid: c0e8e5d2-786b-4b95-af6f-c56cde78b6ad
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 2
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: sports-tournaments-api
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "2026-11-17T04:36:29Z"
+      labels:
+        app: sports-tournaments-api
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: sports-tournaments-api
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+      containers:
+      - envFrom:
+        - configMapRef:
+            name: sports-api-config
+        - secretRef:
+            name: sports-api-secrets
+        - secretRef:
+            name: sports-otel-secrets
+            optional: true
+        image: sports-tournaments-api:4.1.1
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health/live
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 3
+        name: sports-tournaments-api
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health/ready
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 3
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/otel
+          name: otel-ca
+          readOnly: true
+      dnsPolicy: ClusterFirst
+      hostAliases:
+      - hostnames:
+        - otel-lab.local
+        - hotel-otel-lab
+        ip: 157.137.233.183
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: otel-ca
+        secret:
+          defaultMode: 420
+          items:
+          - key: otel-lab-ca.crt
+            path: otel-lab-ca.crt
+          optional: true
+          secretName: sports-otel-ca
+status:
+  availableReplicas: 2
+  conditions:
+  - lastTransitionTime: "2026-11-17T01:58:15Z"
+    lastUpdateTime: "2026-11-17T01:58:15Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2026-11-17T01:57:52Z"
+    lastUpdateTime: "2026-11-17T04:37:12Z"
+    message: ReplicaSet "sports-tournaments-api-69bf74ddf9" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  observedGeneration: 18
+  readyReplicas: 2
+  replicas: 2
+  terminatingReplicas: 0
+  updatedReplicas: 2
+---
+NAME                                      READY   STATUS    RESTARTS   AGE   IP           NODE                                          NOMINATED NODE   READINESS GATES
+sports-tournaments-api-69bf74ddf9-dkxsk   1/1     Running   0          25m   10.42.0.49   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+sports-tournaments-api-69bf74ddf9-mdz6m   1/1     Running   0          25m   10.42.0.50   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+---
+docker.io/library/sports-tournaments-api:4.1.1                                                                     application/vnd.oci.image.manifest.v1+json                sha256:f238a7efda1a8219beafe62e4bac6c85a41b90910205828d741cfaa773f8a06c 283.2 MiB linux/amd64                                                                                io.cri-containerd.image=managed 

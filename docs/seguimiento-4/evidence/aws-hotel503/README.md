@@ -8,6 +8,7 @@ Perfil k6: `load/k6/flujo-profile-shared.js`
 |---|---|
 | Prueba local 503 (Vitest) | `npm run chaos:verify-hotel-503` |
 | ConfigMaps R0/R1 | `k8s/aws/configmap.exp-hotel503-r0.yaml` / `…-r1.yaml` |
+| Deploy fix en AWS | `deploy-20261117000218/` — imagen `4.1.1-ac7b0fd`, 2/2 Ready, steady OCI/GCP OK |
 | Fallo real OCI | **Pendiente ventana Samuel** (no activar desde Sports) |
 
 Cada corrida: carpeta `<RUN_ID>/` con verify k8s, k6 summaries y muestras curl.
