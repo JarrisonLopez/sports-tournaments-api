@@ -348,11 +348,14 @@ def gcloud_deploy_argv(
     database_user: str,
     database_name: str,
     secret_id: str,
+    initial: bool = False,
 ) -> list[str]:
     if service != "sports-demo-api":
         raise ValueError("el canary vive en el servicio único sports-demo-api")
     if track not in {"stable", "canary"}:
         raise ValueError("track inválido")
+    if initial and track != "stable":
+        raise ValueError("solo la creación inicial de Stable puede recibir tráfico")
     version = "3.0.2" if track == "stable" else "4.0.0"
     image = parse_digest(digest, track)
     env_pairs = [
@@ -367,7 +370,7 @@ def gcloud_deploy_argv(
     env = ",".join(env_pairs)
     if "FAULT_INJECTION_ENABLED" in env or "DB_HOST=" in env:
         raise ValueError("el despliegue no define DB_HOST ni fault injection")
-    return [
+    command = [
         "gcloud",
         "run",
         "deploy",
@@ -375,14 +378,18 @@ def gcloud_deploy_argv(
         f"--project={project_id}",
         f"--region={region}",
         f"--image={image}",
-        "--no-traffic",
+    ]
+    if not initial:
+        command.append("--no-traffic")
+    command.extend([
         f"--tag={track}",
         f"--service-account={service_account}",
         "--no-allow-unauthenticated",
         "--clear-cloudsql-instances",
         f"--set-env-vars={env}",
         f"--set-secrets=DB_PASSWORD={secret_id}:latest",
-    ]
+    ])
+    return command
 
 
 def gcloud_traffic_argv(
@@ -506,18 +513,61 @@ def observed_traffic(service: Mapping[str, Any]) -> list[dict[str, object]]:
     return observed
 
 
+def _ready_condition_value(item: Mapping[str, Any]) -> str:
+    return str(item.get("status") or item.get("state") or "")
+
+
+def _revision_conditions(revision: Mapping[str, Any]) -> list[Any]:
+    conditions = revision.get("conditions")
+    if isinstance(conditions, list):
+        return conditions
+    status = revision.get("status")
+    if isinstance(status, Mapping) and isinstance(status.get("conditions"), list):
+        return list(status["conditions"])
+    return []
+
+
 def revision_ready(revision: Mapping[str, Any]) -> bool:
     if revision.get("ready") is True:
         return True
-    conditions = revision.get("conditions", [])
-    if not isinstance(conditions, list):
-        return False
+    conditions = _revision_conditions(revision)
     return any(
         isinstance(item, Mapping)
         and item.get("type") == "Ready"
-        and item.get("state") in {"CONDITION_SUCCEEDED", "True"}
+        and _ready_condition_value(item) in {"CONDITION_SUCCEEDED", "True"}
         for item in conditions
     )
+
+
+def revision_wait_state(revision: Mapping[str, Any], *, digest: str, track: str) -> str:
+    """ready, pending o failed. Un fallo de digest o de la condición no se reintenta."""
+    metadata = revision.get("metadata")
+    name = ""
+    if isinstance(metadata, Mapping):
+        name = str(metadata.get("name", ""))
+    require_revision(name or str(revision.get("name", "")), track)
+    spec = revision.get("spec") if isinstance(revision.get("spec"), Mapping) else {}
+    containers = spec.get("containers") or revision.get("containers") or []
+    image = ""
+    if isinstance(containers, list) and containers and isinstance(containers[0], Mapping):
+        image = str(containers[0].get("image", ""))
+    if image != parse_digest(digest, track):
+        return "failed"
+    if revision_ready(revision):
+        return "ready"
+    conditions = _revision_conditions(revision)
+    if conditions:
+        for item in conditions:
+            if not isinstance(item, Mapping) or item.get("type") != "Ready":
+                continue
+            value = _ready_condition_value(item)
+            message = str(item.get("message") or "").lower()
+            reason = str(item.get("reason") or "").lower()
+            if value in {"False", "CONDITION_FAILED"} and (
+                "fail" in message or "fail" in reason or reason.endswith("error")
+            ):
+                return "failed"
+    return "pending"
 
 
 def assert_revisions_ready(
@@ -545,14 +595,15 @@ def service_urls(service: Mapping[str, Any]) -> dict[str, str]:
     if not main.startswith("https://"):
         raise ValueError("falta la URL principal del servicio")
     tagged: dict[str, str] = {}
-    for item in observed_traffic(service):
-        tag = str(item["tag"])
-        url = ""
-        for raw in status.get("traffic", []):
-            if isinstance(raw, Mapping) and str(raw.get("tag", "")) == tag:
-                url = str(raw.get("url", ""))
-        if tag and url.startswith("https://"):
-            tagged[tag] = url
+    traffic = status.get("traffic", [])
+    if isinstance(traffic, list):
+        for raw in traffic:
+            if not isinstance(raw, Mapping):
+                continue
+            tag = str(raw.get("tag", ""))
+            url = str(raw.get("url", ""))
+            if tag and url.startswith("https://"):
+                tagged[tag] = url
     return {"service": main, **tagged}
 
 
@@ -761,6 +812,11 @@ def main(argv: Sequence[str]) -> int:
     check_revision.add_argument("--digest", required=True)
     check_revision.add_argument("--track", required=True, choices=("stable", "canary"))
 
+    wait_revision = sub.add_parser("revision-wait")
+    wait_revision.add_argument("--file", required=True)
+    wait_revision.add_argument("--digest", required=True)
+    wait_revision.add_argument("--track", required=True, choices=("stable", "canary"))
+
     check_split = sub.add_parser("assert-split")
     check_split.add_argument("--service", required=True)
     check_split.add_argument("--stable-revision", required=True)
@@ -811,6 +867,7 @@ def main(argv: Sequence[str]) -> int:
     deploy.add_argument("--connection-name", required=True)
     deploy.add_argument("--secret", required=True)
     deploy.add_argument("--object-storage-url", default="")
+    deploy.add_argument("--initial", action="store_true")
 
     args = parser.parse_args(list(argv))
     try:
@@ -884,6 +941,15 @@ def main(argv: Sequence[str]) -> int:
             revision = json.loads(open(args.file, encoding="utf-8").read())
             print(assert_deployed_revision(revision, digest=args.digest, track=args.track))
             return 0
+        if args.command == "revision-wait":
+            revision = json.loads(open(args.file, encoding="utf-8").read())
+            state = revision_wait_state(revision, digest=args.digest, track=args.track)
+            print(f"state={state}")
+            if state == "ready":
+                return 0
+            if state == "pending":
+                return 2
+            return 1
         if args.command == "assert-split":
             service = json.loads(open(args.service, encoding="utf-8").read())
             assert_observed_split(
@@ -951,6 +1017,7 @@ def main(argv: Sequence[str]) -> int:
             database_user="sports_user",
             database_name="sports_db",
             secret_id=args.secret,
+            initial=args.initial,
         )
         print(json.dumps(argv))
         return 0

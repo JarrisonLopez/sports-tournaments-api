@@ -23,6 +23,10 @@ on:
         description: 'Escribe PLAN, APPLY:sports_db o ADOPT:sports_db'
         required: true
         type: string
+      source_sha:
+        description: 'Commit completo de feature/canary-seguimiento-3. El CLI no se toma de main.'
+        required: true
+        type: string
 
 concurrency:
   group: entrega3-gcp-terraform
@@ -89,6 +93,27 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Usar el commit Canary autorizado para el esquema
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_sha debe ser el commit completo de Canary." >&2
+            exit 1
+          fi
+          git fetch --no-tags https://github.com/JarrisonLopez/sports-tournaments-api.git feature/canary-seguimiento-3
+          if ! git merge-base --is-ancestor "${SOURCE_SHA}" FETCH_HEAD; then
+            echo "El SHA no pertenece a feature/canary-seguimiento-3." >&2
+            exit 1
+          fi
+          git checkout --detach "${SOURCE_SHA}"
+          test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
+          test -f src/schema/bootstrap-cli.ts
+          test -f src/schema/canonical-schema.ts
+          test -f package-lock.json
+          echo "schema-source=${SOURCE_SHA}"
 
       - name: Autenticación GCP mediante WIF
         uses: google-github-actions/auth@v2

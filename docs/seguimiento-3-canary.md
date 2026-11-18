@@ -123,7 +123,7 @@ Antes del commit de esa rama hay que comprobar que `src/` no cambió y que Stabl
 
 Parar si falta un permiso, el plan no es el esperado, el preflight no muestra las tablas o Monitoring no publica muestras. El conector no está probado contra `sports-demo-mysql`.
 
-1. Plan de esquema, sin ADOPT. Si la acción es `apply`, correr solo el workflow de esquema con `APPLY:sports_db`. Si es `adoption-required` y el plan no lista diferencias, el despliegue usa `adoption-required:SCHEMA-COMPATIBLE:sports_db`. Si es `incompatible`, no desplegar.
+1. Plan de esquema, sin ADOPT. El dispatch lleva `source_sha` del commit de `feature/canary-seguimiento-3`: el job hace checkout de ese commit antes de `npm ci` y no usa el árbol de `main` para el CLI. Si la acción es `apply`, correr solo el workflow de esquema con `APPLY:sports_db`. Si es `adoption-required` y el plan no lista diferencias, el despliegue usa `adoption-required:SCHEMA-COMPATIBLE:sports_db`. Si es `incompatible`, no desplegar.
 2. Dispatch `publish`, confirmación `PUBLISH`, `source_shas` con el SHA Stable, una coma y el SHA Canary, `timing` `180,0`. Guardar los dos digests que imprime el push. Un Image ID local no sirve.
 3. Dispatch `deploy-stable`, confirmación `DEPLOY-STABLE`, digest v3 y la acción de bootstrap. La revisión nace sin tráfico. El script exige el digest, ready, `Esquema de negocio comprobado` y `/health/ready` 200. Solo después asigna 100% a esa revisión y vuelve a describir el servicio.
 4. Anotar el nombre de la revisión Stable. No usar `latest`.

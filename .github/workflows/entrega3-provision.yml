@@ -203,13 +203,9 @@ jobs:
                   creates.append(address)
                   continue
 
-              if actions == ["update"]:
-                  continue
-
-              # delete, replace (delete+create), etc.
               rejected.append(
                   f"{address}: {','.join(actions) or '<none>'} "
-                  "(Provision solo admite create/update/no-op fuera de Cloud Run)"
+                  "(Provision solo admite create y no-op; update, delete y replace quedan bloqueados)"
               )
 
           if rejected:
@@ -217,7 +213,7 @@ jobs:
               for item in rejected:
                   print(f"  - {item}", file=sys.stderr)
               print(
-                  "Provision aborted: unexpected destroys/replaces or Cloud Run changes.",
+                  "Provision aborted: solo se permiten recursos nuevos. Update, delete, replace y Cloud Run quedan bloqueados.",
                   file=sys.stderr,
               )
               sys.exit(1)

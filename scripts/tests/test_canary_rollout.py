@@ -18,6 +18,8 @@ from canary_rollout import (  # noqa: E402
     decide_bootstrap,
     gcloud_deploy_argv,
     gcloud_traffic_argv,
+    revision_wait_state,
+    service_urls,
     monitoring_filter,
     normalize_metrics,
     parse_digest,
@@ -179,6 +181,101 @@ class CanaryRolloutTests(unittest.TestCase):
         self.assertIn("--set-secrets=DB_PASSWORD=sports-demo-db-password:latest", argv)
         self.assertNotIn("sports_user_password", rendered)
         self.assertIn("sports-api-v4@", rendered)
+
+    def test_initial_stable_deploy_receives_traffic_and_stays_private(self) -> None:
+        argv = gcloud_deploy_argv(
+            track="stable",
+            project_id="sports-tournaments-multicloud",
+            region="us-central1",
+            service="sports-demo-api",
+            digest=STABLE,
+            service_account="sports-demo-api@sports-tournaments-multicloud.iam.gserviceaccount.com",
+            connection_name="sports-tournaments-multicloud:us-central1:sports-demo-mysql",
+            object_storage_url="",
+            database_user="sports_user",
+            database_name="sports_db",
+            secret_id="sports-demo-db-password",
+            initial=True,
+        )
+        rendered = " ".join(argv)
+        self.assertNotIn("--no-traffic", argv)
+        self.assertIn("--no-allow-unauthenticated", argv)
+        self.assertIn("--tag=stable", argv)
+        self.assertIn("API_VERSION=3.0.2", rendered)
+        self.assertIn("API_TRACK=stable", rendered)
+        self.assertIn("sports-api-v3@", rendered)
+        self.assertNotIn("FAULT_INJECTION_ENABLED", rendered)
+        self.assertNotIn("latest", rendered.split("@sha256:", 1)[0])
+        with self.assertRaises(ValueError):
+            gcloud_deploy_argv(
+                track="canary",
+                project_id="sports-tournaments-multicloud",
+                region="us-central1",
+                service="sports-demo-api",
+                digest=CANARY,
+                service_account="sports-demo-api@sports-tournaments-multicloud.iam.gserviceaccount.com",
+                connection_name="sports-tournaments-multicloud:us-central1:sports-demo-mysql",
+                object_storage_url="",
+                database_user="sports_user",
+                database_name="sports_db",
+                secret_id="sports-demo-db-password",
+                initial=True,
+            )
+
+    def test_gcloud_ready_status_is_not_treated_as_pending(self) -> None:
+        ready = {
+            "metadata": {"name": "sports-demo-api-00001-paj"},
+            "spec": {"containers": [{"image": STABLE}]},
+            "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+        }
+        pending = {
+            "metadata": {"name": "sports-demo-api-00001-paj"},
+            "spec": {"containers": [{"image": STABLE}]},
+            "status": {"conditions": [{"type": "Ready", "status": "Unknown"}]},
+        }
+        failed = {
+            "metadata": {"name": "sports-demo-api-00001-paj"},
+            "spec": {"containers": [{"image": STABLE}]},
+            "status": {
+                "conditions": [{
+                    "type": "Ready",
+                    "status": "False",
+                    "message": "Container failed to start",
+                }]
+            },
+        }
+        self.assertEqual(revision_wait_state(ready, digest=STABLE, track="stable"), "ready")
+        self.assertEqual(revision_wait_state(pending, digest=STABLE, track="stable"), "pending")
+        self.assertEqual(revision_wait_state(failed, digest=STABLE, track="stable"), "failed")
+        other = STABLE[:-1] + "b"
+        self.assertEqual(revision_wait_state(ready, digest=other, track="stable"), "failed")
+        root = Path(__file__).resolve().parents[2]
+        workflow = (root / ".github" / "workflows" / "entrega3-canary.yml").read_text(encoding="utf-8")
+        shell = (root / "scripts" / "canary_gcp.sh").read_text(encoding="utf-8")
+        self.assertEqual(workflow.count("token_format: access_token"), 1)
+        self.assertEqual(workflow.count("token_format: id_token"), 1)
+        self.assertIn("create_credentials_file: false", workflow)
+        self.assertNotIn("print-identity-token", shell)
+        urls = service_urls({
+            "status": {
+                "url": "https://sports-demo-api-example.a.run.app",
+                "traffic": [
+                    {
+                        "revisionName": "sports-demo-api-00001-paj",
+                        "percent": 100,
+                        "tag": "stable",
+                        "url": "https://stable---sports-demo-api-example.a.run.app",
+                    },
+                    {
+                        "revisionName": "sports-demo-api-00003-pal",
+                        "tag": "canary",
+                        "url": "https://canary---sports-demo-api-example.a.run.app",
+                    },
+                ],
+            }
+        })
+        self.assertIn("canary", urls)
+        self.assertNotEqual(urls["service"], urls["canary"])
 
     def test_monitoring_filter_uses_native_metric(self) -> None:
         text = monitoring_filter(

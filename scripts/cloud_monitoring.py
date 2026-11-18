@@ -16,6 +16,8 @@ from typing import Any, Mapping, Sequence
 SERVICE_NAME = "sports-demo-api"
 REQUEST_COUNT = "run.googleapis.com/request_count"
 REQUEST_LATENCIES = "run.googleapis.com/request_latencies"
+# timeSeries.list no trae unit. El descriptor de request_latencies es ms.
+REQUEST_LATENCIES_UNIT = "ms"
 CPU_UTILIZATION = "run.googleapis.com/container/cpu/utilizations"
 MEMORY_UTILIZATION = "run.googleapis.com/container/memory/utilizations"
 
@@ -62,8 +64,13 @@ def closed_window(seconds: int, *, now: datetime | None = None) -> Window:
     if current.tzinfo is None:
         current = current.replace(tzinfo=timezone.utc)
     end = current - timedelta(seconds=INGESTION_DELAY_SECONDS)
+    # Los puntos DELTA duran 60 s. Un extremo a mitad de minuto parte el bucket.
+    end_epoch = int(end.timestamp())
+    end_epoch -= end_epoch % ALIGNMENT_SECONDS
+    end = datetime.fromtimestamp(end_epoch, timezone.utc)
+    span = seconds - (seconds % ALIGNMENT_SECONDS)
     return Window(
-        start=end - timedelta(seconds=seconds),
+        start=end - timedelta(seconds=span),
         end=end,
         queried_at=current,
     )
@@ -292,17 +299,46 @@ def percentile_from_distribution(distribution: Mapping[str, Any], percentile: fl
     return None
 
 
+def _exponential_counts(distribution: Mapping[str, Any]) -> list[int]:
+    """Completa ceros finales. timeSeries.list recorta los buckets vacíos."""
+    options = distribution.get("bucketOptions")
+    if not isinstance(options, Mapping):
+        raise ValueError("la distribución no trae histograma")
+    exponential = options.get("exponentialBuckets")
+    if not isinstance(exponential, Mapping):
+        raise ValueError("la distribución no usa buckets exponenciales")
+    expected = int(exponential["numFiniteBuckets"]) + 2
+    raw = distribution.get("bucketCounts")
+    if not isinstance(raw, list):
+        raise ValueError("la distribución no trae histograma")
+    counts = [int(item) for item in raw]
+    if len(counts) > expected:
+        raise ValueError("no se pueden sumar histogramas de distinto tamaño")
+    if len(counts) < expected:
+        counts.extend(0 for _index in range(expected - len(counts)))
+    return counts
+
+
+def _same_exponential(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    first = left["bucketOptions"]["exponentialBuckets"]
+    second = right["bucketOptions"]["exponentialBuckets"]
+    return (
+        int(first["numFiniteBuckets"]) == int(second["numFiniteBuckets"])
+        and float(first["growthFactor"]) == float(second["growthFactor"])
+        and float(first["scale"]) == float(second["scale"])
+    )
+
+
 def _merge_distributions(parts: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
     usable = [part for part in parts if int(part.get("count", "0")) > 0]
     if not usable:
         return None
-    first_counts = usable[0]["bucketCounts"]
-    merged = [0 for _item in first_counts]
+    merged = [0 for _item in _exponential_counts(usable[0])]
     total = 0
     for part in usable:
-        counts = [int(item) for item in part["bucketCounts"]]
-        if len(counts) != len(merged):
+        if not _same_exponential(usable[0], part):
             raise ValueError("no se pueden sumar histogramas de distinto tamaño")
+        counts = _exponential_counts(part)
         total += int(part["count"])
         merged = [left + right for left, right in zip(merged, counts)]
     return {
@@ -407,9 +443,7 @@ def aggregate_revision(
             elif metric_type == REQUEST_LATENCIES:
                 if str(series.get("metricKind", "")) != "DELTA":
                     return {"query_status": "error", "reason": "la latencia no es DELTA"}
-                unit = str(series.get("unit", ""))
-                if not unit:
-                    return {"query_status": "error", "reason": "la latencia no declara unidad"}
+                unit = str(series.get("unit") or REQUEST_LATENCIES_UNIT)
                 if latency_unit and latency_unit != unit:
                     return {"query_status": "error", "reason": "las series de latencia mezclan unidades"}
                 latency_unit = unit
