@@ -22,11 +22,17 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
+      - name: Install dependencies (Sports)
         run: npm ci
 
-      - name: Build application
+      - name: Install dependencies (Object Storage)
+        run: npm ci --prefix object-storage
+
+      - name: Build Sports API
         run: npm run build
+
+      - name: Build Object Storage
+        run: npm run build --prefix object-storage
 
       - name: Run automated tests
         run: npm test

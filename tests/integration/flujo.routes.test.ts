@@ -28,6 +28,8 @@ describe("Pruebas de flujo V2", () => {
     vi.clearAllMocks();
     process.env.OBJECT_STORAGE_API_URL = "http://object-storage.test";
     process.env.FLUJO_ORCHESTRATION_MODE = "sequential";
+    delete process.env.HOTEL_API_URL;
+    delete process.env.CINE_API_URL;
   });
 
   it("debe devolver 400 si los identificadores no son enteros", async () => {
@@ -121,6 +123,16 @@ describe("Pruebas de flujo V2", () => {
       status: "success",
       degraded: false,
       degradedDependencies: [],
+      providers: {
+        hotel: {
+          baseUrl: "",
+          via: "upstream",
+        },
+        cine: {
+          baseUrl: "",
+          origen: "upstream",
+        },
+      },
     });
 
     expect(obtenerHabitacion).toHaveBeenCalledWith(2, "trace-1");
