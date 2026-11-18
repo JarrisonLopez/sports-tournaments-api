@@ -1,0 +1,21 @@
+{
+  "runId": "local503-final-r1",
+  "round": "r1",
+  "classification": {
+    "full": 0,
+    "partial": 511,
+    "failed": 0,
+    "total": 511,
+    "fullSuccessRate": 0,
+    "partialRate": 1,
+    "availabilityRate": 1,
+    "errorRate": 0
+  },
+  "metrics": {
+    "http_req_duration_p95": 15.7000375,
+    "http_req_failed_rate": 0,
+    "flujo_available_rate": 1,
+    "iterations": 511
+  },
+  "note": "Copied from k6 stdout; docker could not write load/results path inside container"
+}

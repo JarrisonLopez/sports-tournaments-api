@@ -1,0 +1,112 @@
+name: Chaos Gate
+
+# Evalúa resiliencia del flujo Hotel (latencia) con lab local (mocks HTTP).
+# No arma caos en AWS/OCI/GCP. No usa secretos cloud.
+# Fixtures en chaos/results/fixtures/ son SYNTHETIC — no son evidencia multicloud.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/chaos/**"
+      - "src/resilience/**"
+      - "src/clients/hotel.client.ts"
+      - "scripts/chaos/**"
+      - "chaos/**"
+      - "tests/unit/hotel-latency-fault.test.ts"
+      - "tests/unit/timeout.test.ts"
+      - "tests/unit/circuit-breaker.test.ts"
+      - "tests/unit/hotel-resilience.test.ts"
+      - "tests/integration/chaos-hotel-latency.routes.test.ts"
+      - "tests/unit/flujo-sequential.test.ts"
+      - ".github/workflows/chaos-gate.yml"
+  push:
+    branches:
+      - feature/seguimiento-4-chaos-aws
+
+permissions:
+  contents: read
+
+jobs:
+  chaos-lab:
+    name: Local chaos lab (mocks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit and integration tests (chaos + resilience)
+        run: |
+          npx vitest run \
+            tests/unit/hotel-latency-fault.test.ts \
+            tests/unit/timeout.test.ts \
+            tests/unit/circuit-breaker.test.ts \
+            tests/unit/hotel-resilience.test.ts \
+            tests/integration/chaos-hotel-latency.routes.test.ts \
+            tests/unit/flujo-sequential.test.ts
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Preflight steady-state (compile + fault module reset)
+        run: node -e "console.log('preflight ok')"
+
+      - name: Run Baseline/R0/R1 against HTTP mocks
+        env:
+          CHAOS_HOTEL_LATENCY_MS: "800"
+          HOTEL_TIMEOUT_MS: "400"
+          CHAOS_ROUND_REQUESTS: "24"
+          CHAOS_ROUND_CONCURRENCY: "8"
+          CHAOS_SLO_MS: "500"
+        run: node scripts/chaos/run_rounds.mjs
+
+      - name: Evaluate gate on local-mocks report
+        run: node scripts/chaos/evaluate_gate.mjs
+
+      - name: Automated gate fixtures (PASS / FAIL / invalid)
+        run: node scripts/chaos/test_evaluate_gate.mjs
+
+      - name: Gate fixture — must reject zero success
+        run: |
+          if node scripts/chaos/evaluate_gate.mjs --fixture chaos/results/fixtures/gate-reject-zero-success.json; then
+            echo "expected reject fixture to fail" >&2
+            exit 1
+          fi
+          echo "reject fixture OK"
+
+      - name: Gate fixture — must accept valid improvement
+        run: node scripts/chaos/evaluate_gate.mjs --fixture chaos/results/fixtures/gate-accept-sample.json
+
+      - name: Gate fixture — must reject incomplete metrics
+        run: |
+          if node scripts/chaos/evaluate_gate.mjs --fixture chaos/results/fixtures/gate-reject-incomplete.json; then
+            echo "expected incomplete fixture to fail" >&2
+            exit 1
+          fi
+          echo "incomplete reject OK"
+
+      - name: Gate fixture — must reject corrupt JSON
+        run: |
+          if node scripts/chaos/evaluate_gate.mjs --fixture chaos/results/fixtures/gate-reject-corrupt.json; then
+            echo "expected corrupt fixture to fail" >&2
+            exit 1
+          fi
+          echo "corrupt reject OK"
+
+      - name: Upload chaos results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-results
+          path: chaos/results/
+          if-no-files-found: warn

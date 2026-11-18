@@ -1,0 +1,103 @@
+# Chaos Toolkit experiment — latencia Sports → Hotel (laboratorio)
+# Ejecutar: chaos run chaos/experiments/hotel-latency.yaml
+# Requiere: Sports API arriba, CHAOS_LAB_ENABLED=true, mocks Hotel/Cine.
+version: 1.0.0
+title: Inject controlled latency from Sports to Hotel
+description: >
+  Hipótesis: bajo el perfil k6 fijo, inyectar 2000ms de latencia en la llamada
+  Sports→Hotel eleva el p95 del flujo por encima de 1500ms y reduce la tasa de
+  éxito respecto al steady state, sin afectar Cine directamente.
+  Radio de impacto: únicamente el cliente HTTP Hotel dentro de Sports (lab).
+  Aborto: si /health/ready falla o la activación del fallo no responde 200.
+  Reversión: DELETE /chaos/hotel-latency (idempotente) + verificación de estado.
+tags:
+  - sports
+  - hotel
+  - latency
+  - seguimiento-4
+configuration:
+  sports_base_url:
+    type: env
+    key: SPORTS_BASE_URL
+    default: http://127.0.0.1:8080
+  chaos_token:
+    type: env
+    key: CHAOS_FAULT_TOKEN
+  latency_ms:
+    type: env
+    key: CHAOS_HOTEL_LATENCY_MS
+    default: "2000"
+  ttl_ms:
+    type: env
+    key: CHAOS_HOTEL_LATENCY_TTL_MS
+    default: "90000"
+steady-state-hypothesis:
+  title: Sports está listo y el interruptor de latencia está apagado
+  probes:
+    - type: probe
+      name: sports-ready
+      tolerance: 200
+      provider:
+        type: http
+        url: ${sports_base_url}/health/ready
+        timeout: 5
+    - type: probe
+      name: hotel-latency-off
+      tolerance:
+        type: jsonpath
+        path: $.enabled
+        expect: false
+      provider:
+        type: http
+        url: ${sports_base_url}/chaos/hotel-latency
+        timeout: 5
+method:
+  - type: action
+    name: activate-hotel-latency
+    provider:
+      type: http
+      url: ${sports_base_url}/chaos/hotel-latency
+      method: POST
+      headers:
+        Content-Type: application/json
+      arguments:
+        token: ${chaos_token}
+        latencyMs: ${latency_ms}
+        ttlMs: ${ttl_ms}
+    pauses:
+      after: 2
+  - type: probe
+    name: hotel-latency-on
+    tolerance:
+      type: jsonpath
+      path: $.enabled
+      expect: true
+    provider:
+      type: http
+      url: ${sports_base_url}/chaos/hotel-latency
+      timeout: 5
+  - type: action
+    name: hold-fault-window
+    provider:
+      type: process
+      path: sleep
+      arguments: ["20"]
+rollbacks:
+  - type: action
+    name: deactivate-hotel-latency
+    provider:
+      type: http
+      url: ${sports_base_url}/chaos/hotel-latency
+      method: DELETE
+      headers:
+        x-chaos-token: ${chaos_token}
+  - type: probe
+    name: verify-latency-off
+    tolerance:
+      type: jsonpath
+      path: $.enabled
+      expect: false
+    provider:
+      type: http
+      url: ${sports_base_url}/chaos/hotel-latency
+      timeout: 5

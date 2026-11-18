@@ -6,7 +6,8 @@ import {
   UndiciInstrumentation,
   type UndiciRequest,
 } from "@opentelemetry/instrumentation-undici";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPTraceExporter as OTLPTraceExporterHttpJson } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPTraceExporter as OTLPTraceExporterHttpProto } from "@opentelemetry/exporter-trace-otlp-proto";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
   BatchSpanProcessor,
@@ -16,9 +17,15 @@ import {
 import { createRequire } from "node:module";
 import type { IncomingMessage } from "node:http";
 
-const nodeRequire = createRequire(process.execPath);
+import {
+  OTLP_TRACES_PATH,
+  isOtlpSignalEnabled,
+  otlpSignalUrl,
+  resolveOtelServiceName,
+  resolveOtlpHttpProtocol,
+} from "./observability/otlp-env";
 
-const serviceName = "sports-api";
+const nodeRequire = createRequire(process.execPath);
 
 const HEALTH_PATHS = new Set(["/health/live", "/health/ready"]);
 
@@ -40,8 +47,6 @@ const CLIENT_ROUTE_TEMPLATES: ReadonlyArray<{
   },
 ];
 
-const OTLP_TRACES_PATH = "v1/traces";
-
 export type StartTracingOptions = {
   spanProcessors?: SpanProcessor[];
 };
@@ -59,7 +64,7 @@ export function startTracing(options: StartTracingOptions = {}): void {
   const undici = getUndiciInstrumentation();
 
   sdk = new NodeSDK({
-    serviceName,
+    serviceName: resolveOtelServiceName(),
     metricReaders: [],
     logRecordProcessors: [],
     instrumentations: [instrumentation, undici],
@@ -98,39 +103,23 @@ export function resolveSpanProcessors(
     return options.spanProcessors;
   }
 
-  const url = otlpTracesUrl(env.OTEL_EXPORTER_OTLP_ENDPOINT);
+  if (!isOtlpSignalEnabled(env.OTEL_TRACES_EXPORTER, true)) {
+    return [new NoopSpanProcessor()];
+  }
+
+  const url = otlpSignalUrl(env.OTEL_EXPORTER_OTLP_ENDPOINT, OTLP_TRACES_PATH);
 
   if (!url) {
     return [new NoopSpanProcessor()];
   }
 
-  return [new BatchSpanProcessor(new OTLPTraceExporter({ url }))];
-}
+  // Headers (Basic) y CA (OTEL_EXPORTER_OTLP_CERTIFICATE) los toma el exporter desde env.
+  const exporter =
+    resolveOtlpHttpProtocol(env) === "http/protobuf"
+      ? new OTLPTraceExporterHttpProto({ url })
+      : new OTLPTraceExporterHttpJson({ url });
 
-function otlpTracesUrl(endpoint: string | undefined): string | undefined {
-  if (typeof endpoint !== "string") {
-    return undefined;
-  }
-
-  const base = endpoint.trim();
-
-  if (base.length === 0) {
-    return undefined;
-  }
-
-  const withSlash = base.endsWith("/") ? base : `${base}/`;
-
-  try {
-    const url = new URL(`${withSlash}${OTLP_TRACES_PATH}`);
-
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return undefined;
-    }
-
-    return url.href;
-  } catch {
-    return undefined;
-  }
+  return [new BatchSpanProcessor(exporter)];
 }
 
 function getHttpInstrumentation(): HttpInstrumentation {

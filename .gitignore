@@ -3,9 +3,51 @@ dist/
 .env
 coverage/
 PROJECT_CONTEXT.md
+.worktrees/
+
+# AWS / chaos lab secrets and results
+k8s/aws/secret.yaml
+k8s/aws/secret.otel.yaml
+otel-lab-ca.crt
+*.otel.token
+infra/aws/terraform/*.tfvars
+!infra/aws/terraform/*.tfvars.example
+chaos/results/**
+!chaos/results/.gitkeep
+!chaos/results/rounds-latest.json
+!chaos/results/aws-rounds-latest.json
+!chaos/results/aws-intercloud-latest.json
+!chaos/results/fixtures/
+!chaos/results/fixtures/**
+!chaos/results/chaos-toolkit-journal.json
+chaostoolkit.log
+lab/.runtime-lab.*
+load/results/**
+!load/results/.gitkeep
+!load/results/baseline-k6-*.json
+!load/results/r0-k6-*.json
+!load/results/r1-k6-*.json
+!load/results/k6-*-summary.json
+!load/results/aws-validate-*.json
+!load/results/*-aws-rounds-*.json
+!load/results/*-hotel503-*.json
+!load/results/baseline-hotel-503-*.json
+lab/.runtime/
 
 # Terraform local cache. .terraform.lock.hcl queda fuera de esta carpeta y se versiona.
 .terraform/
+infra/aws/terraform/.provider-mirror/
+infra/aws/terraform/terraform.rc.lab
+infra/aws/terraform/terraform.tfvars.plancheck
+infra/aws/terraform/tfplan-lab.bin
+infra/aws/terraform/plan-output.txt
+infra/aws/terraform/plan-stdout.txt
+infra/aws/terraform/plan-stderr.txt
+infra/aws/terraform/apply-stdout.txt
+infra/aws/terraform/apply-stderr.txt
+infra/aws/.tools/
+*.pem
+!*.pem.example
 
 # Estado local, copias de respaldo y bloqueo local de estado
 *.tfstate

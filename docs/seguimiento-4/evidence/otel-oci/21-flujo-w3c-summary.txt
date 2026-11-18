@@ -1,0 +1,1 @@
+﻿status=success degraded=False hotel=upstream cine=database xTraceId=w3c-fix-20261116232931-flujo

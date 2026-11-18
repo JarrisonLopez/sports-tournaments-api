@@ -1,0 +1,18 @@
+{
+  "environment": "aws-k3s",
+  "runId": "mc-aws-20261116212833",
+  "generatedAt": "2026-11-17T02:29:49.697Z",
+  "classification": {
+    "full": 230,
+    "partial": 0,
+    "failed": 0,
+    "total": 230,
+    "fullSuccessRate": 1,
+    "partialRate": 0,
+    "availabilityRate": 1
+  },
+  "metrics": {
+    "http_req_duration_p95": 319.54843999999997,
+    "http_req_failed_rate": 0
+  }
+}

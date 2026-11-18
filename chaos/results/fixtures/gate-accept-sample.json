@@ -1,0 +1,43 @@
+{
+  "_synthetic": true,
+  "_fixturePurpose": "SYNTHETIC PASS sample for Chaos Gate unit/CI checks. Not AWS/OCI/GCP evidence.",
+  "baseline": {
+    "requests": 24,
+    "p95SuccessMs": 50,
+    "successRate": 1,
+    "availabilityRate": 1,
+    "fullSuccessRate": 1,
+    "partialRate": 0,
+    "withinSloOfTotal": 1,
+    "fullSuccess": 24,
+    "partial": 0,
+    "errors": 0,
+    "success": 24
+  },
+  "r0": {
+    "requests": 24,
+    "p95SuccessMs": 820,
+    "successRate": 1,
+    "availabilityRate": 1,
+    "fullSuccessRate": 1,
+    "partialRate": 0,
+    "withinSloOfTotal": 0,
+    "fullSuccess": 24,
+    "partial": 0,
+    "errors": 0,
+    "success": 24
+  },
+  "r1": {
+    "requests": 24,
+    "p95SuccessMs": 320,
+    "successRate": 1,
+    "availabilityRate": 1,
+    "fullSuccessRate": 0,
+    "partialRate": 1,
+    "withinSloOfTotal": 0.9,
+    "fullSuccess": 0,
+    "partial": 24,
+    "errors": 0,
+    "success": 24
+  }
+}

@@ -1,0 +1,20 @@
+﻿# Pedido de verificación de traza distribuida
+
+Ejecución Sports AWS:
+- runId: otel-oci-20261116225214
+- x-trace-id: otel-oci-20261116225214-flujo-1
+- otelTraceId: f63bd8efa28b0098ee433175369012f4
+- otelSpanId (entrada Sports): 990b55ac18a5238a
+- endpoint: GET http://3.21.120.51:30080/api/v2/flujo/1/1/1
+- resultado HTTP: 200 status=success (Hotel OCI upstream + Cine GCP database)
+
+Samuel:
+1) Confirmar en Hotel el mismo x-trace-id / traceparent.
+2) Entregar otel-lab-ca.crt + token Basic (usuario otel-lab) por canal privado.
+3) Confirmar recepción OTLP de service.name=sports-api en Collector/Grafana cuando apliquemos el secret.
+
+Daniel:
+1) Confirmar en Cine el mismo x-trace-id / traceparent.
+
+k6 canónico compartido: load/k6/flujo-profile-shared.js
+BASE_URL=http://3.21.120.51:30080 ROUND=baseline RUN_ID=shared-1 k6 run load/k6/flujo-profile-shared.js

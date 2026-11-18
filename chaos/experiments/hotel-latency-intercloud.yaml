@@ -1,0 +1,108 @@
+# Chaos Toolkit — latencia Sports AWS → Hotel OCI (intercloud real)
+# El delay vive en el cliente HTTP saliente de Sports; no altera OCI.
+# Ejecutar SOLO con ventana acordada con Samuel:
+#   SPORTS_BASE_URL=http://3.21.120.51:30080 \
+#   CHAOS_FAULT_TOKEN=... CHAOS_HOTEL_LATENCY_MS=800 \
+#   chaos run chaos/experiments/hotel-latency-intercloud.yaml
+# Preferir: scripts/chaos/run_aws_intercloud_rounds.ps1 -AuthorizeIntercloud
+version: 1.0.0
+title: Inject controlled outbound latency Sports→Hotel OCI
+description: >
+  Hipótesis: bajo el mismo perfil k6 moderado, inyectar 800ms de latencia en la
+  llamada saliente Sports→Hotel OCI eleva el p95 y, con timeout+CB+fallback (R1),
+  mantiene disponibilidad (full+partial) ≥90% con p95 ≤70% de R0.
+  Radio: únicamente el cliente HTTP Hotel dentro de Sports. No modifica Samuel.
+  Aborto: ready≠200, activate≠200, o targetBaseUrl no es Hotel OCI real.
+  Reversión: DELETE /chaos/hotel-latency en ambas réplicas + ConfigMap producción.
+tags:
+  - sports
+  - hotel-oci
+  - intercloud
+  - latency
+  - seguimiento-4
+configuration:
+  sports_base_url:
+    type: env
+    key: SPORTS_BASE_URL
+    default: http://3.21.120.51:30080
+  chaos_token:
+    type: env
+    key: CHAOS_FAULT_TOKEN
+  latency_ms:
+    type: env
+    key: CHAOS_HOTEL_LATENCY_MS
+    default: "800"
+  ttl_ms:
+    type: env
+    key: CHAOS_HOTEL_LATENCY_TTL_MS
+    default: "120000"
+steady-state-hypothesis:
+  title: Sports listo, caos off, destino Hotel OCI real
+  probes:
+    - type: probe
+      name: sports-ready
+      tolerance: 200
+      provider:
+        type: http
+        url: ${sports_base_url}/health/ready
+        timeout: 5
+    - type: probe
+      name: hotel-latency-off
+      tolerance:
+        type: jsonpath
+        path: $.enabled
+        expect: false
+      provider:
+        type: http
+        url: ${sports_base_url}/chaos/hotel-latency
+        timeout: 5
+method:
+  - type: action
+    name: activate-hotel-latency
+    provider:
+      type: http
+      url: ${sports_base_url}/chaos/hotel-latency
+      method: POST
+      headers:
+        Content-Type: application/json
+      arguments:
+        token: ${chaos_token}
+        latencyMs: ${latency_ms}
+        ttlMs: ${ttl_ms}
+    pauses:
+      after: 2
+  - type: probe
+    name: hotel-latency-on-real-target
+    tolerance:
+      type: jsonpath
+      path: $.enabled
+      expect: true
+    provider:
+      type: http
+      url: ${sports_base_url}/chaos/hotel-latency
+      timeout: 5
+  - type: action
+    name: hold-fault-window
+    provider:
+      type: process
+      path: sleep
+      arguments: ["20"]
+rollbacks:
+  - type: action
+    name: deactivate-hotel-latency
+    provider:
+      type: http
+      url: ${sports_base_url}/chaos/hotel-latency
+      method: DELETE
+      headers:
+        x-chaos-token: ${chaos_token}
+  - type: probe
+    name: verify-latency-off
+    tolerance:
+      type: jsonpath
+      path: $.enabled
+      expect: false
+    provider:
+      type: http
+      url: ${sports_base_url}/chaos/hotel-latency
+      timeout: 5

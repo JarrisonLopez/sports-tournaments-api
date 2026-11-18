@@ -2,12 +2,24 @@ import { trace } from "@opentelemetry/api";
 import Fastify, { FastifyInstance, FastifyServerOptions } from "fastify";
 import { MetricReader } from "@opentelemetry/sdk-metrics";
 
+import {
+  resolveFaultInjectionConfig,
+  type FaultInjectionConfig,
+} from "./config/fault-injection";
+import {
+  API_TRACK_HEADER,
+  API_VERSION_HEADER,
+  resolveRuntimeIdentity,
+  RuntimeIdentity,
+} from "./config/runtime-identity";
 import { torneoRoutes } from "./routes/torneo.routes";
 import { canchaRoutes } from "./routes/cancha.routes";
 import { jugadorRoutes } from "./routes/jugador.routes";
 import { healthRoutes } from "./routes/health.routes";
 import { v2Routes } from "./routes/v2";
 import { v3Routes } from "./routes/v3";
+import { v4Routes } from "./routes/v4";
+import { chaosRoutes } from "./routes/chaos.routes";
 import {
   createHttpMetrics,
   registerRedMetrics,
@@ -17,6 +29,15 @@ import {
 export type BuildAppOptions = {
   metricsReader?: MetricReader;
   logger?: FastifyServerOptions["logger"];
+  /** Override explícito para tests; en runtime se usan API_VERSION / API_TRACK. */
+  identity?: RuntimeIdentity;
+  /**
+   * Config de fault injection para tests.
+   * En runtime se resuelve desde process.env (o `env` si se pasa).
+   */
+  faultInjection?: FaultInjectionConfig;
+  /** Env aislado para resolver fault injection / identidad cuando no hay overrides. */
+  env?: NodeJS.ProcessEnv;
 };
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -24,10 +45,21 @@ export function buildApp(options: BuildAppOptions = {}) {
     logger: options.logger ?? true,
   });
 
+  const env = options.env ?? process.env;
+  const identity = options.identity ?? resolveRuntimeIdentity(env);
+  const faultInjection =
+    options.faultInjection ?? resolveFaultInjectionConfig(env);
+
+  registerRuntimeIdentityHeaders(app, identity);
   registerServerSpanRoute(app);
   registerRedMetrics(
     app,
-    createHttpMetrics("sports-api", options.metricsReader),
+    createHttpMetrics(
+      env.OTEL_SERVICE_NAME?.trim() || "sports-api",
+      options.metricsReader,
+      env,
+      identity,
+    ),
   );
 
   app.get("/", async () => {
@@ -37,18 +69,36 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
 
   app.register(healthRoutes);
+  app.register(chaosRoutes);
   app.register(torneoRoutes);
   app.register(canchaRoutes);
   app.register(jugadorRoutes);
 
   app.register(v2Routes, {
     prefix: "/api/v2",
+    identity,
+    faultInjection,
   });
   app.register(v3Routes, {
     prefix: "/api/v3",
   });
+  app.register(v4Routes, {
+    prefix: "/api/v4",
+  });
 
   return app;
+}
+
+function registerRuntimeIdentityHeaders(
+  app: FastifyInstance,
+  identity: RuntimeIdentity,
+): void {
+  // onSend cubre 2xx/4xx/5xx y el 404 por defecto de Fastify sin alterar el body.
+  app.addHook("onSend", async (_request, reply, payload) => {
+    reply.header(API_VERSION_HEADER, identity.version);
+    reply.header(API_TRACK_HEADER, identity.track);
+    return payload;
+  });
 }
 
 function registerServerSpanRoute(app: FastifyInstance): void {

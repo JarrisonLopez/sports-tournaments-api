@@ -1,0 +1,4 @@
+﻿R1 resilience evidence (aws-rounds-20261116215016)
+- Sample JSON: status=partial, origenResiliencia=fallback, providers.hotel.via=fallback
+- Log pattern: responseTime~405ms (timeout 400) then ~3-4ms (CB open + fallback)
+- Trace example: aws-rounds-20261116215016-r1-3-101 / otelTraceId=59d1052ca36cf6db510875570c285dfc

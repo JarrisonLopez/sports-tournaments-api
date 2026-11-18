@@ -1,0 +1,8 @@
+﻿round=r1
+armedAtUtc=2026-11-18T00:17:28.5815014Z
+latencyMs=800
+ttlMs=120000
+expiresAt=1794961171809
+remainingMsBeforeK6=120028
+targetBaseUrl=http://149.130.165.30
+targetsRealHotel=True

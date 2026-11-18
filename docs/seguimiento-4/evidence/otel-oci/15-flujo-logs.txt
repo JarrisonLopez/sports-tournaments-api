@@ -1,0 +1,2 @@
+﻿{"level":30,"traceId":"otel-oci-live-20261116230837-flujo-1","otelTraceId":"ad97747b16a40a3c738b6591e1f59309","otelSpanId":"354377a4a5339766","method":"GET","url":"/api/v2/flujo/1/1/1","msg":"Petición API V2"}
+{"level":30,"traceId":"otel-oci-live-20261116230837-flujo-1","otelTraceId":"ad97747b16a40a3c738b6591e1f59309","otelSpanId":"354377a4a5339766","res":{"statusCode":200},"msg":"request completed"}

@@ -1,14 +1,21 @@
 {
   "name": "sports-tournaments-api",
-  "version": "1.0.0",
+  "version": "4.2.0",
   "main": "index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
+    "schema:bootstrap": "node dist/schema/bootstrap-cli.js",
     "test:coverage": "vitest run --coverage",
     "test:coverage:testing": "vitest run --coverage --config vitest.testing.config.mts",
-    "test:coverage:production": "vitest run --coverage --config vitest.production.config.mts"
+    "test:coverage:production": "vitest run --coverage --config vitest.production.config.mts",
+    "chaos:rounds": "node scripts/chaos/run_rounds.mjs",
+    "chaos:gate": "node scripts/chaos/evaluate_gate.mjs",
+    "chaos:gate:test": "node scripts/chaos/test_evaluate_gate.mjs",
+    "chaos:hotel-latency": "node scripts/chaos/run_hotel_latency_experiment.mjs",
+    "chaos:verify-hotel-503": "node scripts/chaos/verify_hotel_503_local.mjs",
+    "lab:mocks": "node lab/mocks/hotel-mock.mjs"
   },
   "keywords": [],
   "author": "",
@@ -21,19 +28,28 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
+    "@google-cloud/cloud-sql-connector": "1.12.1",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-metrics-otlp-http": "0.222.0",
+    "@opentelemetry/exporter-metrics-otlp-proto": "0.222.0",
     "@opentelemetry/exporter-trace-otlp-http": "0.222.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "0.222.0",
     "@opentelemetry/instrumentation-http": "^0.222.0",
     "@opentelemetry/instrumentation-undici": "^0.32.0",
     "@opentelemetry/sdk-metrics": "^2.11.0",
     "@opentelemetry/sdk-node": "^0.222.0",
     "@opentelemetry/sdk-trace-base": "^2.11.0",
     "dotenv": "^17.4.2",
-    "fastify": "^5.12.1",
+    "fastify": "5.12.8",
     "google-auth-library": "^9.15.1",
     "mysql2": "^3.24.2",
     "reflect-metadata": "^0.2.2",
     "typeorm": "^1.1.0"
+  },
+  "overrides": {
+    "fast-uri": "4.2.3",
+    "ajv": {
+      "fast-uri": "3.1.9"
+    }
   }
 }

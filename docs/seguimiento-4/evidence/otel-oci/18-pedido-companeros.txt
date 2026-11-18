@@ -1,0 +1,23 @@
+﻿# Pedido de verificación de traza distribuida (nueva ejecución)
+
+Ejecución Sports AWS:
+- runId: otel-oci-live-20261116231431
+- endpoint: GET http://3.21.120.51:30080/api/v2/flujo/1/1/1
+- resultado HTTP: 200
+- status=success degraded=false
+- Hotel OCI: via=upstream baseUrl=http://149.130.165.30
+- Cine GCP: origen=database baseUrl=http://35.239.107.54
+- mocks/fallback: no
+- x-trace-id: otel-oci-live-20261116231431-flujo-1
+- otelTraceId: 0133858e26fb1057c5f9d3c464c9830f
+- otelSpanId (entrada Sports): ca37cf350c110511
+- traceparent esperado: 00-0133858e26fb1057c5f9d3c464c9830f-ca37cf350c110511-01
+
+Samuel (Hotel OCI / Tempo):
+1) Buscar otelTraceId 0133858e26fb1057c5f9d3c464c9830f en Tempo/Grafana
+2) Confirmar service.name=sports-api y spans flujo.multicloud / hotel.get_habitacion
+3) Confirmar mismo x-trace-id / traceparent en Hotel
+
+Daniel (Cine GCP):
+1) Buscar el mismo otelTraceId / x-trace-id en GCP
+2) Confirmar span cine.get_pelicula y cabeceras recibidas

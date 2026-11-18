@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sports-schema-bootstrap
+  namespace: sports-lab
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: sports-tournaments-api:4.1.1
+          imagePullPolicy: IfNotPresent
+          command:
+            - node
+            - dist/schema/bootstrap-cli.js
+            - apply
+            - --confirm
+            - sports_db
+          env:
+            - name: DB_BOOTSTRAP_ALLOW_HOST
+              value: sports-mysql
+          envFrom:
+            - configMapRef:
+                name: sports-api-config
+            - secretRef:
+                name: sports-api-secrets

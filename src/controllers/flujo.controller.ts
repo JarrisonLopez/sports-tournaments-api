@@ -1,6 +1,10 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 
 import * as flujoService from "../services/flujo.service";
+import {
+  recordFlujoResult,
+  type FlujoOutcome,
+} from "../observability/chaos-metrics";
 
 export async function ejecutarFlujo(
   request: FastifyRequest,
@@ -34,18 +38,65 @@ export async function ejecutarFlujo(
     });
   }
 
-  const resultado = await flujoService.ejecutar({
-    torneoId: torneoIdNumero,
-    habitacionId: habitacionIdNumero,
-    peliculaId: peliculaIdNumero,
-    traceId,
-  });
+  const started = Date.now();
 
-  if (!resultado) {
-    return reply.status(404).send({
-      message: "Torneo no encontrado",
+  try {
+    const resultado = await flujoService.ejecutar({
+      torneoId: torneoIdNumero,
+      habitacionId: habitacionIdNumero,
+      peliculaId: peliculaIdNumero,
+      traceId,
     });
+
+    if (!resultado) {
+      recordFlujoResult("error", Date.now() - started, {
+        reason: "torneo_not_found",
+        trace_id: traceId,
+      });
+      return reply.status(404).send({
+        message: "Torneo no encontrado",
+      });
+    }
+
+    const outcome =
+      resultado.status === "partial" ? ("success" as const) : ("success" as const);
+    recordFlujoResult(outcome, Date.now() - started, {
+      trace_id: traceId,
+      flujo_status: resultado.status,
+      degraded: String(resultado.degraded),
+    });
+    return resultado;
+  } catch (error) {
+    const outcome = classifyFlujoError(error);
+    recordFlujoResult(outcome, Date.now() - started, {
+      trace_id: traceId,
+      error_name: error instanceof Error ? error.name : "unknown",
+    });
+
+    request.log.error(
+      {
+        err: error,
+        traceId,
+        outcome,
+      },
+      "Flujo multicloud falló",
+    );
+
+    throw error;
+  }
+}
+
+function classifyFlujoError(error: unknown): FlujoOutcome {
+  if (!error || typeof error !== "object") {
+    return "error";
   }
 
-  return resultado;
+  const name = (error as { name?: string }).name;
+  if (name === "HotelTimeoutError" || name === "TimeoutError") {
+    return "timeout";
+  }
+  if (name === "CircuitOpenError") {
+    return "circuit_open";
+  }
+  return "error";
 }

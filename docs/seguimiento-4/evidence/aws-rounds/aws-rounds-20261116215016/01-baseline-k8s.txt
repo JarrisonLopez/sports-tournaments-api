@@ -1,0 +1,56 @@
+﻿NAME                                          READY   STATUS      RESTARTS   AGE   IP           NODE                                          NOMINATED NODE   READINESS GATES
+pod/cine-mock-5fd6ccdf4c-4zknv                1/1     Running     0          44m   10.42.0.19   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+pod/hotel-mock-58c974fc47-9r7tf               1/1     Running     0          44m   10.42.0.18   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+pod/sports-mysql-7975dc5b5d-ttbnn             1/1     Running     0          68m   10.42.0.9    ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+pod/sports-schema-bootstrap-gj9sp             0/1     Completed   0          53m   10.42.0.15   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+pod/sports-tournaments-api-6676968df4-qg8zn   1/1     Running     0          30s   10.42.0.32   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+pod/sports-tournaments-api-6676968df4-srv5p   1/1     Running     0          52s   10.42.0.31   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+
+NAME                                     READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS               IMAGES                         SELECTOR
+deployment.apps/cine-mock                1/1     1            1           44m   cine-mock                node:22-alpine                 app=cine-mock
+deployment.apps/hotel-mock               1/1     1            1           44m   hotel-mock               node:22-alpine                 app=hotel-mock
+deployment.apps/sports-mysql             1/1     1            1           68m   mysql                    mysql:8.4                      app=sports-mysql
+deployment.apps/sports-tournaments-api   2/2     2            2           68m   sports-tournaments-api   sports-tournaments-api:4.1.1   app=sports-tournaments-api
+
+NAME                          DATA   AGE
+configmap/kube-root-ca.crt    1      68m
+configmap/lab-mocks-scripts   2      44m
+configmap/sports-api-config   19     68m
+
+NAME                             TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE   SELECTOR
+service/cine-mock                ClusterIP   10.43.61.31     <none>        8082/TCP         44m   app=cine-mock
+service/hotel-mock               ClusterIP   10.43.26.249    <none>        8081/TCP         44m   app=hotel-mock
+service/sports-mysql             ClusterIP   10.43.20.112    <none>        3306/TCP         68m   app=sports-mysql
+service/sports-tournaments-api   NodePort    10.43.248.221   <none>        8080:30080/TCP   68m   app=sports-tournaments-api
+---
+apiVersion: v1
+data:
+  API_TRACK: stable
+  API_VERSION: 4.1.1
+  CHAOS_LAB_ENABLED: "true"
+  CINE_API_URL: http://cine-mock:8082
+  DB_HOST: sports-mysql
+  DB_NAME: sports_db
+  DB_PORT: "3306"
+  DB_USER: sports_user
+  FLUJO_ORCHESTRATION_MODE: sequential
+  HOTEL_API_URL: http://hotel-mock:8081
+  HOTEL_CB_FAILURE_THRESHOLD: "3"
+  HOTEL_CB_OPEN_MS: "2000"
+  HOTEL_CB_SUCCESS_THRESHOLD: "1"
+  HOTEL_FALLBACK_ENABLED: "false"
+  HOTEL_TIMEOUT_MS: "400"
+  OBJECT_STORAGE_API_URL: ""
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  PORT: "8080"
+  RESILIENCE_ENABLED: "false"
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"API_TRACK":"stable","API_VERSION":"4.1.1","CHAOS_LAB_ENABLED":"true","CINE_API_URL":"http://cine-mock:8082","DB_HOST":"sports-mysql","DB_NAME":"sports_db","DB_PORT":"3306","DB_USER":"sports_user","FLUJO_ORCHESTRATION_MODE":"sequential","HOTEL_API_URL":"http://hotel-mock:8081","HOTEL_CB_FAILURE_THRESHOLD":"3","HOTEL_CB_OPEN_MS":"2000","HOTEL_CB_SUCCESS_THRESHOLD":"1","HOTEL_FALLBACK_ENABLED":"false","HOTEL_TIMEOUT_MS":"400","OBJECT_STORAGE_API_URL":"","OTEL_EXPORTER_OTLP_ENDPOINT":"","PORT":"8080","RESILIENCE_ENABLED":"false"},"kind":"ConfigMap","metadata":{"annotations":{},"name":"sports-api-config","namespace":"sports-lab"}}
+  creationTimestamp: "2026-11-17T01:43:05Z"
+  name: sports-api-config
+  namespace: sports-lab
+  resourceVersion: "2793"
+  uid: 84382bbf-e29c-4007-aac6-57464bcc515b

@@ -1,0 +1,8 @@
+﻿x-trace-id: w3c-postcine-20261116234532-flujo
+x-api-version: 4.1.1
+x-api-track: stable
+Connection: keep-alive
+Keep-Alive: timeout=72
+Content-Length: 703
+Content-Type: application/json; charset=utf-8
+Date: Tue, 17 Nov 2026 04:45:33 GMT

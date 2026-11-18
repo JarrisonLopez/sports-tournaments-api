@@ -1,0 +1,18 @@
+{
+    "runId":  "aws-intercloud-dryrun-prepared",
+    "injectionPoint":  "sports-outbound-hotel-client",
+    "commandsWhenAuthorized":  [
+                                   ".\\scripts\\chaos\\run_aws_intercloud_rounds.ps1 -AuthorizeIntercloud -BaseUrl \"http://3.21.120.51:30080\""
+                               ],
+    "preservedMockExperiment":  "aws-rounds-20261116215016",
+    "thresholdsAPriori":  {
+                              "minR1AvailabilityRate":  0.9,
+                              "latencyMs":  800,
+                              "partialIsNotFullSuccess":  true,
+                              "maxR1P95SuccessRatioVsR0":  0.7
+                          },
+    "generatedAt":  "2026-11-17T03:36:03.7334921Z",
+    "status":  "prepared-pending-samuel-authorization",
+    "authorized":  false,
+    "note":  "Dry-run evidence captured without enabling CHAOS_LAB or injecting latency. Live rounds require -AuthorizeIntercloud after Samuel window."
+}

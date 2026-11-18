@@ -1,0 +1,20 @@
+{
+    "runId":  "deploy-ac7b0fd-20261117000506",
+    "traceId":  "deploy-ac7b0fd-20261117000506-flujo-1",
+    "httpLive":  "live=200",
+    "httpReady":  "ready=200",
+    "httpFlujo":  "flujo=200\r\ntime=0.498765",
+    "status":  "success",
+    "degraded":  false,
+    "hotelVia":  "upstream",
+    "hotelBase":  "http://149.130.165.30",
+    "cineBase":  "http://35.239.107.54",
+    "cineOrigen":  "database",
+    "habitacionOrigen":  null,
+    "image":  "sports-tournaments-api:4.1.1-ac7b0fd",
+    "digestCtr":  "sha256:60dd46aa4939dcb6cfd30efaad0bcdb41a8ca0607a9f5e228cf13686b2b3e7e8",
+    "digestDocker":  "sha256:7268e22f2440119f7bbff0c3e30b6d72182d72cd83b691ac1ff412d9e5a14480",
+    "previousImage":  "sports-tournaments-api:4.1.1",
+    "previousDigestCtr":  "sha256:f238a7efda1a8219beafe62e4bac6c85a41b90910205828d741cfaa773f8a06c",
+    "sha":  "ac7b0fd"
+}

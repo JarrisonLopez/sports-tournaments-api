@@ -1,0 +1,13 @@
+status=success degraded=false hotel=upstream cine=database
+x-trace-id=w3c-postcine-20261116234532-flujo
+otelTraceId=8fe0364d426e1d90deefa626a24f987d
+otelSpanId=acdce60405d8ecfd
+HTTP=200
+url=http://3.21.120.51:30080/api/v2/flujo/1/1/1
+startedAtUtc=2026-11-17T04:45:32.5892440Z
+endedAtUtc=2026-11-17T04:45:33.2296720Z
+hotelBaseUrl=http://149.130.165.30
+cineBaseUrl=http://35.239.107.54
+pods=2/2 Ready
+otlpExportErrors=none (últimos 15m)
+w3cTraceparentUnique=no capturado en esta ejecución (sin proxy); verificado en 30-correlated-w3c (comma=false)

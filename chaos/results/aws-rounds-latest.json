@@ -1,0 +1,172 @@
+﻿{
+    "environment":  "aws-k3s",
+    "runId":  "aws-rounds-20261116215016",
+    "generatedAt":  "2026-11-17T02:57:39.5034711Z",
+    "hypothesis":  "Con timeout+CB+fallback ante latencia Hotel (misma carga e intensidad), la disponibilidad (full+partial) permanece \u003e=90%, el p95 de respuestas disponibles baja \u003e=30% vs R0, y se reporta aparte fullSuccess vs partial (parcial != exito completo).",
+    "thresholdsAPriori":  {
+                              "minR1AvailabilityRate":  0.9,
+                              "partialIsNotFullSuccess":  true,
+                              "maxR1P95SuccessRatioVsR0":  0.7
+                          },
+    "fault":  {
+                  "notOciNotGcp":  true,
+                  "latencyMs":  800,
+                  "target":  "hotel-mock (lab)",
+                  "ttlMs":  120000
+              },
+    "baseline":  {
+                     "runId":  "aws-rounds-20261116215016",
+                     "round":  "baseline",
+                     "generatedAt":  "2026-11-17T02:52:37.499Z",
+                     "profile":  {
+                                     "stages":  [
+                                                    {
+                                                        "duration":  "15s",
+                                                        "target":  2
+                                                    },
+                                                    {
+                                                        "duration":  "45s",
+                                                        "target":  4
+                                                    },
+                                                    {
+                                                        "duration":  "15s",
+                                                        "target":  0
+                                                    }
+                                                ],
+                                     "thresholds":  {
+                                                        "http_req_failed":  [
+                                                                                "rate\u003c0.95"
+                                                                            ],
+                                                        "http_req_duration":  [
+                                                                                  "p(95)\u003c15000"
+                                                                              ],
+                                                        "flujo_available":  [
+                                                                                "rate\u003e0.05"
+                                                                            ]
+                                                    }
+                                 },
+                     "classification":  {
+                                            "full":  394,
+                                            "partial":  0,
+                                            "failed":  0,
+                                            "total":  394,
+                                            "fullSuccessRate":  1,
+                                            "partialRate":  0,
+                                            "availabilityRate":  1,
+                                            "errorRate":  0
+                                        },
+                     "metrics":  {
+                                     "http_req_duration_p95":  111.57928499999998,
+                                     "http_req_failed_rate":  0,
+                                     "flujo_available_rate":  1,
+                                     "iterations":  394
+                                 }
+                 },
+    "r0":  {
+               "runId":  "aws-rounds-20261116215016",
+               "round":  "r0",
+               "generatedAt":  "2026-11-17T02:54:14.787Z",
+               "profile":  {
+                               "stages":  [
+                                              {
+                                                  "duration":  "15s",
+                                                  "target":  2
+                                              },
+                                              {
+                                                  "duration":  "45s",
+                                                  "target":  4
+                                              },
+                                              {
+                                                  "duration":  "15s",
+                                                  "target":  0
+                                              }
+                                          ],
+                               "thresholds":  {
+                                                  "http_req_failed":  [
+                                                                          "rate\u003c0.95"
+                                                                      ],
+                                                  "http_req_duration":  [
+                                                                            "p(95)\u003c15000"
+                                                                        ],
+                                                  "flujo_available":  [
+                                                                          "rate\u003e0.05"
+                                                                      ]
+                                              }
+                           },
+               "classification":  {
+                                      "full":  132,
+                                      "partial":  0,
+                                      "failed":  0,
+                                      "total":  132,
+                                      "fullSuccessRate":  1,
+                                      "partialRate":  0,
+                                      "availabilityRate":  1,
+                                      "errorRate":  0
+                                  },
+               "metrics":  {
+                               "http_req_duration_p95":  980.394035,
+                               "http_req_failed_rate":  0,
+                               "flujo_available_rate":  1,
+                               "iterations":  132
+                           }
+           },
+    "r1":  {
+               "runId":  "aws-rounds-20261116215016",
+               "round":  "r1",
+               "generatedAt":  "2026-11-17T02:56:33.808Z",
+               "profile":  {
+                               "stages":  [
+                                              {
+                                                  "duration":  "15s",
+                                                  "target":  2
+                                              },
+                                              {
+                                                  "duration":  "45s",
+                                                  "target":  4
+                                              },
+                                              {
+                                                  "duration":  "15s",
+                                                  "target":  0
+                                              }
+                                          ],
+                               "thresholds":  {
+                                                  "http_req_failed":  [
+                                                                          "rate\u003c0.95"
+                                                                      ],
+                                                  "http_req_duration":  [
+                                                                            "p(95)\u003c15000"
+                                                                        ],
+                                                  "flujo_available":  [
+                                                                          "rate\u003e0.05"
+                                                                      ]
+                                              }
+                           },
+               "classification":  {
+                                      "full":  0,
+                                      "partial":  330,
+                                      "failed":  0,
+                                      "total":  330,
+                                      "fullSuccessRate":  0,
+                                      "partialRate":  1,
+                                      "availabilityRate":  1,
+                                      "errorRate":  0
+                                  },
+               "metrics":  {
+                               "http_req_duration_p95":  516.38789,
+                               "http_req_failed_rate":  0,
+                               "flujo_available_rate":  1,
+                               "iterations":  330
+                           }
+           },
+    "comparison":  {
+                       "p95DeltaPct":  -47.33,
+                       "availabilityDeltaPp":  0,
+                       "fullSuccessDeltaPp":  -100,
+                       "partialRateR1":  1,
+                       "fullSuccessRateR1":  0,
+                       "serviceLevelR1":  "partial",
+                       "p95ImprovedAtLeast30Pct":  true,
+                       "availabilityOk":  true,
+                       "conclusion":  "Hipotesis SOSTENIDA a nivel disponibilidad: R1 availability\u003e=90% y p95\u003c=70% de R0. Nivel=partial. Parcial != full."
+                   }
+}

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sports-lab
+  labels:
+    app.kubernetes.io/part-of: sports-tournaments
+    seguimiento: "4"

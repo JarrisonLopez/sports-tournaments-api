@@ -1,0 +1,30 @@
+{
+    "httpStatus":  200,
+    "status":  "partial",
+    "degraded":  true,
+    "degradedDependencies":  [
+                                 "hotel"
+                             ],
+    "habitacion":  {
+                       "id":  1,
+                       "numeroHabitacion":  "DEG-1",
+                       "precioHabitacion":  0,
+                       "estadoHabitacion":  "degradado-lab",
+                       "tipoHabitacion":  "fallback-controlled",
+                       "origenResiliencia":  "fallback"
+                   },
+    "pelicula":  {
+                     "id":  1,
+                     "nombre":  "Pelicula Lab"
+                 },
+    "providers":  {
+                      "cine":  {
+                                   "origen":  "upstream",
+                                   "baseUrl":  "http://127.0.0.1:18082"
+                               },
+                      "hotel":  {
+                                    "baseUrl":  "http://127.0.0.1:18081",
+                                    "via":  "fallback"
+                                }
+                  }
+}

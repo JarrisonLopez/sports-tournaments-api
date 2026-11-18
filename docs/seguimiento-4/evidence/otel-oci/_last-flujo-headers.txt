@@ -1,0 +1,12 @@
+HTTP/1.1 200 OK
+x-trace-id: otel-oci-live-20261116231431-flujo-1
+content-type: application/json; charset=utf-8
+x-api-version: 4.1.1
+x-api-track: stable
+content-length: 706
+Date: Tue, 17 Nov 2026 04:14:31 GMT
+Connection: keep-alive
+Keep-Alive: timeout=72
+
+
+REQUEST_X_TRACE_ID=otel-oci-live-20261116231431-flujo-1

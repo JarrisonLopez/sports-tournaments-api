@@ -1,0 +1,9 @@
+﻿sha=ac7b0fd
+image=sports-tournaments-api:4.1.1-ac7b0fd
+digestCtr=sha256:60dd46aa4939dcb6cfd30efaad0bcdb41a8ca0607a9f5e228cf13686b2b3e7e8
+digestDocker=sha256:7268e22f2440119f7bbff0c3e30b6d72182d72cd83b691ac1ff412d9e5a14480
+previousImage=sports-tournaments-api:4.1.1
+previousDigestCtr=sha256:f238a7efda1a8219beafe62e4bac6c85a41b90910205828d741cfaa773f8a06c
+ready=2/2
+windowReady=true
+samuel503Activated=false

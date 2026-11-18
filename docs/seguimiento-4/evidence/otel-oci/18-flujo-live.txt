@@ -1,0 +1,7 @@
+﻿HTTP=200 RUN=otel-oci-live-20261116231431 TRACE=otel-oci-live-20261116231431-flujo-1
+otelTraceId=0133858e26fb1057c5f9d3c464c9830f
+otelSpanId=ca37cf350c110511
+status=success degraded=false
+hotel=upstream http://149.130.165.30
+cine=database http://35.239.107.54
+mocks=false fallback=false

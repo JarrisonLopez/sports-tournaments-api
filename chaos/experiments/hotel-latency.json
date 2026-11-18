@@ -1,0 +1,112 @@
+{
+  "version": "1.0.0",
+  "title": "Inject controlled latency from Sports to Hotel",
+  "description": "Hipótesis: el interruptor de latencia Sports→Hotel se activa, permanece medible y se revierte a enabled=false (abort si health/live o probes fallan).",
+  "tags": ["sports", "hotel", "latency", "seguimiento-4"],
+  "configuration": {
+    "sports_base_url": {
+      "type": "env",
+      "key": "SPORTS_BASE_URL",
+      "default": "http://127.0.0.1:8080"
+    },
+    "chaos_token": {
+      "type": "env",
+      "key": "CHAOS_FAULT_TOKEN",
+      "default": "chaos-lab-token-minimo-32-chars!!"
+    },
+    "latency_ms": {
+      "type": "env",
+      "key": "CHAOS_HOTEL_LATENCY_MS",
+      "default": "800"
+    },
+    "ttl_ms": {
+      "type": "env",
+      "key": "CHAOS_HOTEL_LATENCY_TTL_MS",
+      "default": "90000"
+    }
+  },
+  "steady-state-hypothesis": {
+    "title": "Sports live and hotel latency fault off",
+    "probes": [
+      {
+        "type": "probe",
+        "name": "sports-live",
+        "tolerance": 200,
+        "provider": {
+          "type": "http",
+          "url": "${sports_base_url}/health/live",
+          "timeout": 5
+        }
+      },
+      {
+        "type": "probe",
+        "name": "fault-off",
+        "tolerance": 0,
+        "provider": {
+          "type": "process",
+          "path": "node",
+          "arguments": ["scripts/chaos/probe_fault_state.mjs", "expect=false"],
+          "timeout": 10
+        }
+      }
+    ]
+  },
+  "method": [
+    {
+      "type": "action",
+      "name": "activate-hotel-latency",
+      "provider": {
+        "type": "http",
+        "url": "${sports_base_url}/chaos/hotel-latency",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "arguments": {
+          "token": "${chaos_token}",
+          "latencyMs": "${latency_ms}",
+          "ttlMs": "${ttl_ms}"
+        }
+      },
+      "pauses": {
+        "after": 2
+      }
+    },
+    {
+      "type": "probe",
+      "name": "fault-on",
+      "tolerance": 0,
+      "provider": {
+        "type": "process",
+        "path": "node",
+        "arguments": ["scripts/chaos/probe_fault_state.mjs", "expect=true"],
+        "timeout": 10
+      }
+    }
+  ],
+  "rollbacks": [
+    {
+      "type": "action",
+      "name": "deactivate-hotel-latency",
+      "provider": {
+        "type": "http",
+        "url": "${sports_base_url}/chaos/hotel-latency",
+        "method": "DELETE",
+        "headers": {
+          "x-chaos-token": "${chaos_token}"
+        }
+      }
+    },
+    {
+      "type": "probe",
+      "name": "verify-off",
+      "tolerance": 0,
+      "provider": {
+        "type": "process",
+        "path": "node",
+        "arguments": ["scripts/chaos/probe_fault_state.mjs", "expect=false"],
+        "timeout": 10
+      }
+    }
+  ]
+}

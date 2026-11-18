@@ -1,0 +1,19 @@
+{
+  "_synthetic": true,
+  "_fixturePurpose": "SYNTHETIC FAIL sample: incomplete metrics (missing r1 rates/p95). Must not be treated as PASS. Not AWS/OCI/GCP evidence.",
+  "baseline": {
+    "requests": 24,
+    "p95SuccessMs": 50,
+    "availabilityRate": 1,
+    "fullSuccessRate": 1
+  },
+  "r0": {
+    "requests": 24,
+    "p95SuccessMs": 820,
+    "availabilityRate": 1,
+    "fullSuccessRate": 1
+  },
+  "r1": {
+    "requests": 24
+  }
+}

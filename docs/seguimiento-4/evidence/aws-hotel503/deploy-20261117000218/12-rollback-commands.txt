@@ -1,0 +1,5 @@
+﻿# Rollback imagen Sports (si hace falta revertir el binario)
+ssh -i $env:USERPROFILE\.ssh\sports-chaos-k3s.pem ec2-user@3.21.120.51 "sudo kubectl -n sports-lab set image deployment/sports-tournaments-api sports-tournaments-api=sports-tournaments-api:4.1.1 && sudo kubectl -n sports-lab rollout status deployment/sports-tournaments-api --timeout=180s"
+
+# Rollback ConfigMap/modos experimento (baseline normal)
+.\scripts\chaos\set_aws_hotel503_mode.ps1 -Mode rollback

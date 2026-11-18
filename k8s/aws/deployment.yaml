@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sports-tournaments-api
+  namespace: sports-lab
+  labels:
+    app: sports-tournaments-api
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: sports-tournaments-api
+  template:
+    metadata:
+      labels:
+        app: sports-tournaments-api
+    spec:
+      # En un solo nodo k3s la anti-affinity preferida no garantiza HA de nodo.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: sports-tournaments-api
+                topologyKey: kubernetes.io/hostname
+      # Cert TLS Samuel: SAN DNS=otel-lab.local, IP=157.137.233.183 (CN hotel-otel-lab no basta).
+      hostAliases:
+        - ip: "157.137.233.183"
+          hostnames:
+            - "otel-lab.local"
+            - "hotel-otel-lab"
+      containers:
+        - name: sports-tournaments-api
+          image: sports-tournaments-api:4.1.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: sports-api-config
+            - secretRef:
+                name: sports-api-secrets
+            # Authorization=Basic … (sin commitear). Opcional hasta que llegue el token.
+            - secretRef:
+                name: sports-otel-secrets
+                optional: true
+          volumeMounts:
+            - name: otel-ca
+              mountPath: /etc/otel
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: otel-ca
+          secret:
+            secretName: sports-otel-ca
+            optional: true
+            items:
+              - key: otel-lab-ca.crt
+                path: otel-lab-ca.crt

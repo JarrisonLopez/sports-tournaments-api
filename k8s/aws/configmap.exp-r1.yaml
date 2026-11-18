@@ -1,0 +1,27 @@
+# Experimento R1 AWS: mismos mocks + misma latencia inyectable + timeout/CB/fallback.
+# Temporal y reversible. No apunta a OCI/GCP.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sports-api-config
+  namespace: sports-lab
+data:
+  PORT: "8080"
+  DB_HOST: sports-mysql
+  DB_PORT: "3306"
+  DB_USER: sports_user
+  DB_NAME: sports_db
+  API_VERSION: "4.1.1"
+  API_TRACK: "stable"
+  HOTEL_API_URL: "http://hotel-mock:8081"
+  CINE_API_URL: "http://cine-mock:8082"
+  OBJECT_STORAGE_API_URL: ""
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  FLUJO_ORCHESTRATION_MODE: "sequential"
+  HOTEL_TIMEOUT_MS: "400"
+  HOTEL_FALLBACK_ENABLED: "true"
+  RESILIENCE_ENABLED: "true"
+  CHAOS_LAB_ENABLED: "true"
+  HOTEL_CB_FAILURE_THRESHOLD: "3"
+  HOTEL_CB_OPEN_MS: "2000"
+  HOTEL_CB_SUCCESS_THRESHOLD: "1"

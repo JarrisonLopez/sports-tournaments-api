@@ -1,12 +1,40 @@
 # Sports Tournaments API
 
-Este repositorio contiene la evolución del proyecto académico de torneos deportivos, desde la API base de la primera entrega hasta la infraestructura individual de la Entrega 3 en Google Cloud.
+Este repositorio contiene la evolución del proyecto académico de torneos deportivos, desde la API base hasta el **Seguimiento #4 de Ingeniería del Caos**.
 
 - **Entrega 1:** API REST de torneos deportivos, con entidades propias, MySQL, Docker y pipelines de CI.
-- **Entrega 2:** el mismo repositorio añade `/api/v2`, integración en tiempo real con las API de Hotel y Cine, Kubernetes en GKE, un servicio de Object Storage sobre Google Cloud Storage y observabilidad.
-- **Entrega 3:** superficie `/api/v3` individual (sin Hotel ni Cine), desplegada en Cloud Run con Terraform y un pipeline de GitHub Actions. V1 y V2 se conservan en el código.
+- **Entrega 2:** `/api/v2`, integración con Hotel y Cine, Kubernetes, Object Storage y observabilidad.
+- **Entrega 3:** `/api/v3` individual en Cloud Run (GCP) con Terraform y canary; V1/V2 se conservan.
+- **Seguimiento #4:** Sports como coordinador multicloud sobre **AWS + Kubernetes (k3s/EC2 `us-east-2`)**, flujo **secuencial** Hotel (OCI) → Cine (GCP). Experimentos reales cerrados: HTTP 503 Hotel (Samuel), verificación Cine (Daniel), latencia intercloud OCI; timeout + fallback + circuit breaker; k6 compartido; Chaos Gate CI. Documentación en [`docs/seguimiento-4/`](docs/seguimiento-4/README.md).
 
-La Entrega 2 no sustituye las rutas originales. Las conserva y agrega la superficie `/api/v2`. La Entrega 3 tampoco las sustituye: añade `/api/v3` y un runtime distinto en Cloud Run.
+La Entrega 2 no sustituye las rutas originales. Las conserva y agrega la superficie `/api/v2`. La Entrega 3 tampoco las sustituye: añade `/api/v3` y un runtime distinto en Cloud Run. El Seguimiento #4 **reutiliza** V2 como flujo evaluado y no elimina el stack GCP/canary histórico.
+
+## Seguimiento #4 — acceso rápido
+
+Lab AWS **desplegado y restaurado** tras los experimentos: Sports `http://3.21.120.51:30080` → Hotel OCI → Cine GCP. Perfil k6: [`load/k6/flujo-profile-shared.js`](load/k6/flujo-profile-shared.js).
+
+| Tema | Ruta |
+|---|---|
+| Arquitectura AWS | [`docs/seguimiento-4/ARQUITECTURA_AWS.md`](docs/seguimiento-4/ARQUITECTURA_AWS.md) |
+| Contratos Samuel/Daniel | [`docs/seguimiento-4/CONTRATOS_MULTICLOUD.md`](docs/seguimiento-4/CONTRATOS_MULTICLOUD.md) |
+| Hotel HTTP 503 | [`docs/seguimiento-4/EXPERIMENTO_HOTEL_503.md`](docs/seguimiento-4/EXPERIMENTO_HOTEL_503.md) |
+| Latencia intercloud | [`docs/seguimiento-4/EXPERIMENTO_INTERCLOUD.md`](docs/seguimiento-4/EXPERIMENTO_INTERCLOUD.md) · [evidencia live](docs/seguimiento-4/evidence/aws-intercloud/) |
+| R0/R1 | [`docs/seguimiento-4/RONDAS_R0_R1.md`](docs/seguimiento-4/RONDAS_R0_R1.md) |
+| Informe | [`docs/seguimiento-4/INFORME.md`](docs/seguimiento-4/INFORME.md) |
+| Demo (sin caos) | [`docs/seguimiento-4/DEMO_SCRIPT.md`](docs/seguimiento-4/DEMO_SCRIPT.md) |
+| Manifiestos K8s AWS | [`k8s/aws/`](k8s/aws/) |
+| Chaos Gate CI | [`.github/workflows/chaos-gate.yml`](.github/workflows/chaos-gate.yml) · [run success](https://github.com/JarrisonLopez/sports-tournaments-api/actions/runs/44204457598) |
+
+**Chaos Gate** evalúa mocks/fixtures en GitHub Actions; **no** sustituye ni repite los experimentos reales en AWS/OCI/GCP.
+
+```powershell
+npm test
+npm run build
+npm run chaos:rounds
+npm run chaos:gate
+```
+
+Versión SemVer del proyecto: **4.2.0** (`package.json`). Candidato de release de cierre: **v4.2.0** ([`docs/seguimiento-4/RELEASE.md`](docs/seguimiento-4/RELEASE.md)) — sin tag/publicación hasta autorización.
 
 # Entrega 3 — API V3 individual (desplegada)
 
@@ -14,7 +42,7 @@ La Entrega 3 es **individual**. V1 y V2 siguen en el código. V3 **no** depende 
 
 La infraestructura GCP está **aplicada y operativa** en el proyecto `sports-tournaments-multicloud` (`us-central1`). El detalle de módulos vive en [`terraform/README.md`](terraform/README.md); el bucket de estado, en [`terraform/bootstrap/README.md`](terraform/bootstrap/README.md); la identidad de aprovisionamiento, en [`terraform/persistent/README.md`](terraform/persistent/README.md).
 
-El campo `version` de `package.json` sigue en `1.0.0`. “API V2” y “API V3” se refieren a los prefijos HTTP `/api/v2` y `/api/v3`, no a releases SemVer 2.0.0 o 3.0.0.
+“API V2” y “API V3” se refieren a los prefijos HTTP `/api/v2` y `/api/v3`. El SemVer del repositorio para el cierre del Seguimiento #4 es **4.2.0**.
 
 ## Endpoint V3
 
@@ -811,13 +839,13 @@ Sin valores secretos. Los nombres vacíos de base de datos local están en `.env
 | Variable | Uso |
 |---|---|
 | `PORT` | Puerto HTTP. Si no está definida, 3000 |
-| `DB_HOST` | Host MySQL cuando no hay Cloud SQL |
-| `DB_PORT` | Puerto MySQL cuando no hay Cloud SQL |
+| `DB_HOST` | Si está definido, la conexión es TCP local o de proxy y no abre Cloud SQL |
+| `DB_PORT` | Puerto TCP cuando `DB_HOST` está definido |
 | `DB_USER` | Usuario de la base |
 | `DB_PASSWORD` | Contraseña, si no se usa archivo |
 | `DB_PASSWORD_FILE` | Ruta del archivo con la contraseña. En GKE apunta al secreto montado |
 | `DB_NAME` | Nombre de la base |
-| `CLOUD_SQL_CONNECTION_NAME` | Si existe, la conexión usa el socket `/cloudsql/...` en lugar de host y puerto |
+| `CLOUD_SQL_CONNECTION_NAME` | Sin `DB_HOST`, la API usa el conector de Cloud SQL para Node (TLS, `caching_sha2_password`). No usa el socket `/cloudsql`. El preflight contra la instancia real sigue pendiente |
 | `HOTEL_API_URL` | URL base de Hotel |
 | `CINE_API_URL` | URL base de Cine |
 | `OBJECT_STORAGE_API_URL` | URL base de Object Storage |

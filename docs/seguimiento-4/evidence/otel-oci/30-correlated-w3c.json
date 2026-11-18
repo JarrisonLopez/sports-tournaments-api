@@ -1,0 +1,35 @@
+{
+  "runId": "w3c-one-20261116233411",
+  "startedAtUtc": "2026-11-17T04:35:19.000Z",
+  "xTraceId": "w3c-one-20261116233411-flujo",
+  "httpStatus": 200,
+  "flujoStatus": "success",
+  "degraded": false,
+  "hotelVia": "upstream",
+  "cineOrigen": "database",
+  "sportsServer": {
+    "otelTraceId": "4d2c23ebdfcb130da2473261057148f1",
+    "otelSpanId": "ac8de2d9147b061b"
+  },
+  "hotelClient": {
+    "traceparent": "00-4d2c23ebdfcb130da2473261057148f1-553769519c1c3bd3-01",
+    "traceId": "4d2c23ebdfcb130da2473261057148f1",
+    "spanId": "553769519c1c3bd3",
+    "comma": false,
+    "xTraceId": "w3c-one-20261116233411-flujo",
+    "tracestate": null
+  },
+  "cineClient": {
+    "traceparent": "00-4d2c23ebdfcb130da2473261057148f1-a4d609f324b97dde-01",
+    "traceId": "4d2c23ebdfcb130da2473261057148f1",
+    "spanId": "a4d609f324b97dde",
+    "comma": false,
+    "xTraceId": "w3c-one-20261116233411-flujo",
+    "tracestate": null
+  },
+  "traceIdsEqual": true,
+  "clientSpanIdsDistinct": true,
+  "clarification": "El reporte anterior mezcló otelTraceId del flujo HTTP con parentTraceId de un probe in-pod distinto. Esta evidencia es una sola petición GET /api/v2/flujo/1/1/1 con proxy temporal hacia Hotel OCI y Cine GCP reales.",
+  "otlpSecretsPresent": true,
+  "configRestoredToRealHotelCine": true
+}
