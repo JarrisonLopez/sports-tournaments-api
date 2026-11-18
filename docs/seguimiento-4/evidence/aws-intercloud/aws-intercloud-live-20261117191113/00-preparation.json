@@ -1,0 +1,52 @@
+﻿{
+    "runId":  "aws-intercloud-live-20261117191113",
+    "authorized":  true,
+    "generatedAt":  "2026-11-18T00:11:22.2416308Z",
+    "injectionPoint":  "sports-outbound-hotel-client",
+    "k6Profile":  "load/k6/flujo-profile-shared.js",
+    "configMaps":  {
+                       "r1":  "k8s/aws/configmap.exp-intercloud-r1.yaml",
+                       "restore":  "k8s/aws/configmap.yaml",
+                       "baseline":  "k8s/aws/configmap.exp-intercloud-baseline.yaml",
+                       "r0":  "k8s/aws/configmap.exp-intercloud-r0.yaml"
+                   },
+    "targets":  {
+                    "cine":  "http://35.239.107.54",
+                    "hotel":  "http://149.130.165.30"
+                },
+    "otel":  {
+                 "endpoint":  "https://otel-lab.local:31443",
+                 "certificatePath":  "/etc/otel/otel-lab-ca.crt",
+                 "secretsUnchanged":  [
+                                          "sports-otel-secrets",
+                                          "sports-otel-ca"
+                                      ]
+             },
+    "thresholdsAPriori":  {
+                              "minR1AvailabilityRate":  0.9,
+                              "maxR1P95SuccessRatioVsR0":  0.7,
+                              "partialIsNotFullSuccess":  true,
+                              "latencyMs":  800,
+                              "hotelTimeoutMsR1":  400,
+                              "k6Profile":  "load/k6/flujo-profile-shared.js (15s@2, 45s@4, 15s@0)",
+                              "baseline":  "RESILIENCE_ENABLED=true, fault not armed",
+                              "r0":  "RESILIENCE_ENABLED=false, fault 800ms",
+                              "r1":  "RESILIENCE_ENABLED=true timeout/CB/fallback, fault 800ms",
+                              "hypothesis":  "Con timeout+CB+fallback ante latencia Sports→Hotel OCI (misma carga), disponibilidad (full+partial) \u003e=90% y p95 \u003c=70% de R0; parcial != full.",
+                              "timeoutNote":  "applyHotelLatencyIfActive corre DENTRO de withTimeout: 800ms \u003e 400ms ⇒ R1 aborta durante inyección (antes del fetch)."
+                          },
+    "status":  "executing",
+    "commandsWhenAuthorized":  [
+                                   ".\\scripts\\chaos\\run_aws_intercloud_rounds.ps1 -AuthorizeIntercloud -BaseUrl \"http://3.21.120.51:30080\"",
+                                   "AUTHORIZE_INTERCLOUD=1; .\\scripts\\chaos\\run_aws_intercloud_rounds.ps1"
+                               ],
+    "abortConditions":  [
+                            "health/ready != 200",
+                            "flujo sin providers OCI/GCP",
+                            "targetsRealHotel != true al armar",
+                            "armed_pods != 2",
+                            "TTL restante \u003c 90s antes de k6",
+                            "OTEL endpoint vacío o distinto al estable"
+                        ],
+    "restore":  "try/finally → disarm + k8s/aws/configmap.yaml (OTLP + resiliencia + URLs reales)"
+}

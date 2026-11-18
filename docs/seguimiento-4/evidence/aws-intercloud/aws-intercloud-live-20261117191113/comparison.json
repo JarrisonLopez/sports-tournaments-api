@@ -1,0 +1,176 @@
+﻿{
+    "environment":  "aws-k3s-intercloud-oci",
+    "runId":  "aws-intercloud-live-20261117191113",
+    "generatedAt":  "2026-11-18T00:20:05.1936159Z",
+    "injectionPoint":  "sports-outbound-hotel-client",
+    "k6Profile":  "load/k6/flujo-profile-shared.js",
+    "notMocks":  true,
+    "liveFailed":  false,
+    "thresholdsAPriori":  {
+                              "minR1AvailabilityRate":  0.9,
+                              "maxR1P95SuccessRatioVsR0":  0.7,
+                              "partialIsNotFullSuccess":  true,
+                              "latencyMs":  800,
+                              "hotelTimeoutMsR1":  400,
+                              "k6Profile":  "load/k6/flujo-profile-shared.js (15s@2, 45s@4, 15s@0)",
+                              "baseline":  "RESILIENCE_ENABLED=true, fault not armed",
+                              "r0":  "RESILIENCE_ENABLED=false, fault 800ms",
+                              "r1":  "RESILIENCE_ENABLED=true timeout/CB/fallback, fault 800ms",
+                              "hypothesis":  "Con timeout+CB+fallback ante latencia Sports→Hotel OCI (misma carga), disponibilidad (full+partial) \u003e=90% y p95 \u003c=70% de R0; parcial != full.",
+                              "timeoutNote":  "applyHotelLatencyIfActive corre DENTRO de withTimeout: 800ms \u003e 400ms ⇒ R1 aborta durante inyección (antes del fetch)."
+                          },
+    "baseline":  {
+                     "runId":  "aws-intercloud-live-20261117191113",
+                     "round":  "baseline",
+                     "generatedAt":  "2026-11-18T00:13:43.836Z",
+                     "profile":  {
+                                     "stages":  [
+                                                    {
+                                                        "duration":  "15s",
+                                                        "target":  2
+                                                    },
+                                                    {
+                                                        "duration":  "45s",
+                                                        "target":  4
+                                                    },
+                                                    {
+                                                        "duration":  "15s",
+                                                        "target":  0
+                                                    }
+                                                ],
+                                     "thresholds":  {
+                                                        "http_req_failed":  [
+                                                                                "rate\u003c0.95"
+                                                                            ],
+                                                        "http_req_duration":  [
+                                                                                  "p(95)\u003c15000"
+                                                                              ],
+                                                        "flujo_available":  [
+                                                                                "rate\u003e0.05"
+                                                                            ]
+                                                    }
+                                 },
+                     "classification":  {
+                                            "full":  273,
+                                            "partial":  0,
+                                            "failed":  0,
+                                            "total":  273,
+                                            "fullSuccessRate":  1,
+                                            "partialRate":  0,
+                                            "availabilityRate":  1,
+                                            "errorRate":  0
+                                        },
+                     "metrics":  {
+                                     "http_req_duration_p95":  360.1345799999998,
+                                     "http_req_failed_rate":  0,
+                                     "flujo_available_rate":  1,
+                                     "iterations":  273
+                                 }
+                 },
+    "r0":  {
+               "runId":  "aws-intercloud-live-20261117191113",
+               "round":  "r0",
+               "generatedAt":  "2026-11-18T00:16:20.821Z",
+               "profile":  {
+                               "stages":  [
+                                              {
+                                                  "duration":  "15s",
+                                                  "target":  2
+                                              },
+                                              {
+                                                  "duration":  "45s",
+                                                  "target":  4
+                                              },
+                                              {
+                                                  "duration":  "15s",
+                                                  "target":  0
+                                              }
+                                          ],
+                               "thresholds":  {
+                                                  "http_req_failed":  [
+                                                                          "rate\u003c0.95"
+                                                                      ],
+                                                  "http_req_duration":  [
+                                                                            "p(95)\u003c15000"
+                                                                        ],
+                                                  "flujo_available":  [
+                                                                          "rate\u003e0.05"
+                                                                      ]
+                                              }
+                           },
+               "classification":  {
+                                      "full":  113,
+                                      "partial":  0,
+                                      "failed":  0,
+                                      "total":  113,
+                                      "fullSuccessRate":  1,
+                                      "partialRate":  0,
+                                      "availabilityRate":  1,
+                                      "errorRate":  0
+                                  },
+               "metrics":  {
+                               "http_req_duration_p95":  1230.3478,
+                               "http_req_failed_rate":  0,
+                               "flujo_available_rate":  1,
+                               "iterations":  113
+                           }
+           },
+    "r1":  {
+               "runId":  "aws-intercloud-live-20261117191113",
+               "round":  "r1",
+               "generatedAt":  "2026-11-18T00:18:48.153Z",
+               "profile":  {
+                               "stages":  [
+                                              {
+                                                  "duration":  "15s",
+                                                  "target":  2
+                                              },
+                                              {
+                                                  "duration":  "45s",
+                                                  "target":  4
+                                              },
+                                              {
+                                                  "duration":  "15s",
+                                                  "target":  0
+                                              }
+                                          ],
+                               "thresholds":  {
+                                                  "http_req_failed":  [
+                                                                          "rate\u003c0.95"
+                                                                      ],
+                                                  "http_req_duration":  [
+                                                                            "p(95)\u003c15000"
+                                                                        ],
+                                                  "flujo_available":  [
+                                                                          "rate\u003e0.05"
+                                                                      ]
+                                              }
+                           },
+               "classification":  {
+                                      "full":  0,
+                                      "partial":  273,
+                                      "failed":  0,
+                                      "total":  273,
+                                      "fullSuccessRate":  0,
+                                      "partialRate":  1,
+                                      "availabilityRate":  1,
+                                      "errorRate":  0
+                                  },
+               "metrics":  {
+                               "http_req_duration_p95":  624.4951199999999,
+                               "http_req_failed_rate":  0,
+                               "flujo_available_rate":  1,
+                               "iterations":  273
+                           }
+           },
+    "comparison":  {
+                       "p95DeltaPct":  -49.24,
+                       "availabilityDeltaPp":  0,
+                       "fullSuccessDeltaPp":  -100,
+                       "partialRateR1":  1,
+                       "serviceLevelR1":  "partial",
+                       "p95ImprovedAtLeast30Pct":  true,
+                       "availabilityOk":  true,
+                       "conclusion":  "Hipotesis SOSTENIDA (intercloud). Nivel R1=partial. Parcial != full."
+                   }
+}

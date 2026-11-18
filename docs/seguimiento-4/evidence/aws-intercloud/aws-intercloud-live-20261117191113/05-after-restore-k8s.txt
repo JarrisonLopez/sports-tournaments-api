@@ -1,0 +1,58 @@
+﻿NAME                                          READY   STATUS      RESTARTS   AGE   IP           NODE                                          NOMINATED NODE   READINESS GATES
+pod/cine-mock-5fd6ccdf4c-4zknv                1/1     Running     0          22h   10.42.0.19   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+pod/hotel-mock-58c974fc47-9r7tf               1/1     Running     0          22h   10.42.0.18   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+pod/sports-mysql-7975dc5b5d-ttbnn             1/1     Running     0          22h   10.42.0.9    ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+pod/sports-schema-bootstrap-gj9sp             0/1     Completed   0          22h   10.42.0.15   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+pod/sports-tournaments-api-8667985769-7scjj   1/1     Running     0          36s   10.42.0.68   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+pod/sports-tournaments-api-8667985769-8bs7f   1/1     Running     0          57s   10.42.0.67   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+
+NAME                                     READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS               IMAGES                                 SELECTOR
+deployment.apps/cine-mock                1/1     1            1           22h   cine-mock                node:22-alpine                         app=cine-mock
+deployment.apps/hotel-mock               1/1     1            1           22h   hotel-mock               node:22-alpine                         app=hotel-mock
+deployment.apps/sports-mysql             1/1     1            1           22h   mysql                    mysql:8.4                              app=sports-mysql
+deployment.apps/sports-tournaments-api   2/2     2            2           22h   sports-tournaments-api   sports-tournaments-api:4.1.1-ac7b0fd   app=sports-tournaments-api
+
+NAME                          DATA   AGE
+configmap/kube-root-ca.crt    1      22h
+configmap/lab-mocks-scripts   2      22h
+configmap/sports-api-config   21     22h
+
+NAME                             TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE   SELECTOR
+service/cine-mock                ClusterIP   10.43.61.31     <none>        8082/TCP         22h   app=cine-mock
+service/hotel-mock               ClusterIP   10.43.26.249    <none>        8081/TCP         22h   app=hotel-mock
+service/sports-mysql             ClusterIP   10.43.20.112    <none>        3306/TCP         22h   app=sports-mysql
+service/sports-tournaments-api   NodePort    10.43.248.221   <none>        8080:30080/TCP   22h   app=sports-tournaments-api
+---
+apiVersion: v1
+data:
+  API_TRACK: stable
+  API_VERSION: 4.1.1
+  CHAOS_LAB_ENABLED: "false"
+  CINE_API_URL: http://35.239.107.54
+  DB_HOST: sports-mysql
+  DB_NAME: sports_db
+  DB_PORT: "3306"
+  DB_USER: sports_user
+  FLUJO_ORCHESTRATION_MODE: sequential
+  HOTEL_API_URL: http://149.130.165.30
+  HOTEL_FALLBACK_ENABLED: "true"
+  HOTEL_TIMEOUT_MS: "2000"
+  OBJECT_STORAGE_API_URL: ""
+  OTEL_EXPORTER_OTLP_CERTIFICATE: /etc/otel/otel-lab-ca.crt
+  OTEL_EXPORTER_OTLP_ENDPOINT: https://otel-lab.local:31443
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_METRICS_EXPORTER: otlp
+  OTEL_SERVICE_NAME: sports-api
+  OTEL_TRACES_EXPORTER: otlp
+  PORT: "8080"
+  RESILIENCE_ENABLED: "true"
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"API_TRACK":"stable","API_VERSION":"4.1.1","CHAOS_LAB_ENABLED":"false","CINE_API_URL":"http://35.239.107.54","DB_HOST":"sports-mysql","DB_NAME":"sports_db","DB_PORT":"3306","DB_USER":"sports_user","FLUJO_ORCHESTRATION_MODE":"sequential","HOTEL_API_URL":"http://149.130.165.30","HOTEL_FALLBACK_ENABLED":"true","HOTEL_TIMEOUT_MS":"2000","OBJECT_STORAGE_API_URL":"","OTEL_EXPORTER_OTLP_CERTIFICATE":"/etc/otel/otel-lab-ca.crt","OTEL_EXPORTER_OTLP_ENDPOINT":"https://otel-lab.local:31443","OTEL_EXPORTER_OTLP_PROTOCOL":"http/protobuf","OTEL_METRICS_EXPORTER":"otlp","OTEL_SERVICE_NAME":"sports-api","OTEL_TRACES_EXPORTER":"otlp","PORT":"8080","RESILIENCE_ENABLED":"true"},"kind":"ConfigMap","metadata":{"annotations":{},"name":"sports-api-config","namespace":"sports-lab"}}
+  creationTimestamp: "2026-11-17T01:43:05Z"
+  name: sports-api-config
+  namespace: sports-lab
+  resourceVersion: "36444"
+  uid: 84382bbf-e29c-4007-aac6-57464bcc515b

@@ -46,4 +46,4 @@ La imagen de producción usa `PORT=8080`. Los manifiestos AWS alinean containerP
 
 ## Estado de despliegue
 
-Hasta que existan credenciales AWS autorizadas y se ejecute Terraform apply, el despliegue remoto se considera **no verificado**. La validación primaria es local (Docker / kind / k3d).
+Lab AWS **desplegado** en `us-east-2` (perfil `sports-chaos`): k3s/EC2, namespace `sports-lab`, Sports NodePort `:30080` (`http://3.21.120.51:30080`). Usado para validación, Hotel 503 e intercloud; **restaurado** tras experimentos (`CHAOS_LAB_ENABLED=false`, Hotel OCI + Cine GCP). Detalle operativo: `AWS_DEPLOY.md` e `INFORME.md`.

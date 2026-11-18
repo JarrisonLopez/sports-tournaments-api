@@ -1,31 +1,65 @@
-# Guion técnico de demostración — Seguimiento #4
+# Guion de sustentación — Seguimiento #4 (sin inyección de caos)
 
-1. **Kubernetes 2 réplicas**  
-   `kubectl -n sports-lab get deploy,pods -l app=sports-tournaments-api`  
-   Mostrar `replicas: 2` y probes en `k8s/aws/deployment.yaml`. Si AWS no está up: dry-run/local kind.
+Demostración corta y reproducible. **No** armar latencia, **no** cambiar modos Hotel 503, **no** pasar `-AuthorizeIntercloud`.
 
-2. **Endpoint Sports**  
-   `curl http://<host>:30080/health/ready` y `GET /`
+## 1. Arquitectura y réplicas (manifiestos)
 
-3. **Integración Hotel + Cine**  
-   Con mocks o URLs reales:  
-   `curl -H "x-trace-id: demo-1" http://<host>:30080/api/v2/flujo/1/1/1`
+Mostrar `k8s/aws/deployment.yaml` (`replicas: 2`, probes) y el índice `docs/seguimiento-4/README.md` (Sports AWS → Hotel OCI → Cine GCP).
 
-4. **Trace ID**  
-   Mostrar header de respuesta `x-trace-id` y spans `flujo.multicloud` / `hotel.get_habitacion` / `cine.get_pelicula` en Grafana (si disponible).
+Opcional (solo lectura, si el lab sigue up):
 
-5. **Inyección de latencia**  
-   `CHAOS_LAB_ENABLED=true` + `POST /chaos/hotel-latency` con token.  
-   `GET /chaos/hotel-latency` → enabled true.
+```powershell
+kubectl -n sports-lab get deploy,pods -l app=sports-tournaments-api
+```
 
-6. **Circuit breaker / timeout**  
-   Ejecutar `npm run chaos:rounds` y mostrar `errorNames` de R1 (`HotelTimeoutError`, `CircuitOpenError`).
+## 2. Health + flujo multicloud (sin caos)
 
-7. **Métricas**  
-   Abrir `chaos/results/rounds-latest.json` (p95 R0 vs R1).
+```powershell
+curl http://3.21.120.51:30080/health/ready
+curl -H "x-trace-id: demo-sustentacion-1" http://3.21.120.51:30080/api/v2/flujo/1/1/1
+```
 
-8. **Reversión**  
-   `DELETE /chaos/hotel-latency` + GET enabled false.
+Esperado: ready OK; flujo `status=success`, `degraded=false`, Hotel `upstream`, Cine `database`.
+Si el lab no está reachable: usar cuerpos guardados en evidencias (`05-after-flujo.body`, `post-consolidation-flujo.json`).
 
-9. **Comparación R0/R1**  
-   Tabla del informe: p95, SLO, wall-clock.
+## 3. Evidencias JSON (experimentos reales)
+
+| Experimento | Archivo a abrir |
+|---|---|
+| Hotel HTTP 503 | `docs/seguimiento-4/evidence/aws-hotel503/RESULTADOS_DEFINITIVOS.md` + `runs-definitivos/` |
+| Latencia intercloud | `docs/seguimiento-4/evidence/aws-intercloud/aws-intercloud-live-20261117191113/comparison.json` |
+| Cine / W3C post-deploy | `docs/seguimiento-4/evidence/otel-oci/31-pedido-companeros.md` |
+| Rollback intercloud | `…/05-after-flujo.body` + `05-after-restore-k8s.txt` |
+
+Mensaje clave: R1 = **disponibilidad degradada (partial)**, no éxito completo.
+
+## 4. Chaos Gate (CI sintético ≠ experimentos cloud)
+
+- Workflow: `.github/workflows/chaos-gate.yml` — mocks HTTP + fixtures; **no** arma caos en AWS/OCI/GCP.
+- Run aprobado: https://github.com/JarrisonLopez/sports-tournaments-api/actions/runs/44204457598
+
+Local (opcional, sin cloud):
+
+```powershell
+npm run chaos:rounds
+npm run chaos:gate
+npm run chaos:gate:test
+```
+
+## 5. Trazabilidad / observabilidad
+
+- Mostrar `x-trace-id` / `otelTraceId` en `evidence/otel-oci/31-summary.txt` o respuesta live.
+- Pedido Tempo a compañeros: `31-pedido-companeros.md` / confirmaciones Samuel (803≈802 ms R0; ~400 ms R1 sin HTTP Hotel).
+- **No** afirmar circuit breaker OPEN sin métrica explícita.
+
+## 6. Informe y versión
+
+- Informe ≤6 páginas: `docs/seguimiento-4/INFORME.md`
+- SemVer propuesto de cierre: **v4.2.0** (`docs/seguimiento-4/RELEASE.md`)
+
+## Prohibido en la demo de cierre
+
+- `POST /chaos/hotel-latency` / `DELETE` de armado
+- `run_aws_intercloud_rounds.ps1 -AuthorizeIntercloud`
+- `set_aws_hotel503_mode.ps1` con `baseline|r0|r1`
+- Terraform / kubectl apply / rollout

@@ -1,6 +1,6 @@
 {
   "name": "sports-tournaments-api",
-  "version": "4.1.1",
+  "version": "4.2.0",
   "main": "index.js",
   "scripts": {
     "build": "tsc",

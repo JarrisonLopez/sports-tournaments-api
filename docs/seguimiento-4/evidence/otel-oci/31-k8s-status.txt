@@ -1,0 +1,15 @@
+﻿== PODS ==
+NAME                                      READY   STATUS    RESTARTS   AGE     IP           NODE                                          NOMINATED NODE   READINESS GATES
+sports-tournaments-api-69bf74ddf9-dkxsk   1/1     Running   0          10m     10.42.0.49   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+sports-tournaments-api-69bf74ddf9-mdz6m   1/1     Running   0          9m58s   10.42.0.50   ip-172-31-46-250.us-east-2.compute.internal   <none>           <none>
+== DEPLOY ==
+NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
+sports-tournaments-api   2/2     2            2           3h3m
+== CONFIG ==
+HOTEL_API_URL=http://149.130.165.30
+CINE_API_URL=http://35.239.107.54
+OTEL_ENDPOINT=https://otel-lab.local:31443
+== SECRETS ==
+NAME                  TYPE     DATA   AGE
+sports-otel-secrets   Opaque   1      43m
+sports-otel-ca        Opaque   1      43m

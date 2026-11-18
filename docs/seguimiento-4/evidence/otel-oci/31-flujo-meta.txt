@@ -1,0 +1,6 @@
+﻿HTTP=200
+startedAtUtc=2026-11-17T04:45:32.5892440Z
+endedAtUtc=2026-11-17T04:45:33.2296720Z
+x-trace-id=w3c-postcine-20261116234532-flujo
+runId=w3c-postcine-20261116234532
+url=http://3.21.120.51:30080/api/v2/flujo/1/1/1

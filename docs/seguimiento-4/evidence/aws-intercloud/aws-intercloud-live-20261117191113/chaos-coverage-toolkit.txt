@@ -1,0 +1,8 @@
+﻿round=toolkit
+armedAtUtc=2026-11-18T00:13:46.6977901Z
+latencyMs=800
+ttlMs=120000
+expiresAt=1794960949766
+remainingMsBeforeK6=119904
+targetBaseUrl=http://149.130.165.30
+targetsRealHotel=True

@@ -5,31 +5,36 @@ Este repositorio contiene la evolución del proyecto académico de torneos depor
 - **Entrega 1:** API REST de torneos deportivos, con entidades propias, MySQL, Docker y pipelines de CI.
 - **Entrega 2:** `/api/v2`, integración con Hotel y Cine, Kubernetes, Object Storage y observabilidad.
 - **Entrega 3:** `/api/v3` individual en Cloud Run (GCP) con Terraform y canary; V1/V2 se conservan.
-- **Seguimiento #4:** Sports como coordinador multicloud sobre **AWS + Kubernetes (k3s/EC2)**, flujo **secuencial** Hotel (OCI) → Cine (GCP), experimento de latencia, timeout + circuit breaker, k6, chaos gate. Documentación en [`docs/seguimiento-4/`](docs/seguimiento-4/README.md).
+- **Seguimiento #4:** Sports como coordinador multicloud sobre **AWS + Kubernetes (k3s/EC2 `us-east-2`)**, flujo **secuencial** Hotel (OCI) → Cine (GCP). Experimentos reales cerrados: HTTP 503 Hotel (Samuel), verificación Cine (Daniel), latencia intercloud OCI; timeout + fallback + circuit breaker; k6 compartido; Chaos Gate CI. Documentación en [`docs/seguimiento-4/`](docs/seguimiento-4/README.md).
 
 La Entrega 2 no sustituye las rutas originales. Las conserva y agrega la superficie `/api/v2`. La Entrega 3 tampoco las sustituye: añade `/api/v3` y un runtime distinto en Cloud Run. El Seguimiento #4 **reutiliza** V2 como flujo evaluado y no elimina el stack GCP/canary histórico.
 
 ## Seguimiento #4 — acceso rápido
 
+Lab AWS **desplegado y restaurado** tras los experimentos: Sports `http://3.21.120.51:30080` → Hotel OCI → Cine GCP. Perfil k6: [`load/k6/flujo-profile-shared.js`](load/k6/flujo-profile-shared.js).
+
 | Tema | Ruta |
 |---|---|
 | Arquitectura AWS | [`docs/seguimiento-4/ARQUITECTURA_AWS.md`](docs/seguimiento-4/ARQUITECTURA_AWS.md) |
 | Contratos Samuel/Daniel | [`docs/seguimiento-4/CONTRATOS_MULTICLOUD.md`](docs/seguimiento-4/CONTRATOS_MULTICLOUD.md) |
-| Experimento latencia | [`docs/seguimiento-4/EXPERIMENTO_LATENCIA.md`](docs/seguimiento-4/EXPERIMENTO_LATENCIA.md) |
+| Hotel HTTP 503 | [`docs/seguimiento-4/EXPERIMENTO_HOTEL_503.md`](docs/seguimiento-4/EXPERIMENTO_HOTEL_503.md) |
+| Latencia intercloud | [`docs/seguimiento-4/EXPERIMENTO_INTERCLOUD.md`](docs/seguimiento-4/EXPERIMENTO_INTERCLOUD.md) · [evidencia live](docs/seguimiento-4/evidence/aws-intercloud/) |
 | R0/R1 | [`docs/seguimiento-4/RONDAS_R0_R1.md`](docs/seguimiento-4/RONDAS_R0_R1.md) |
 | Informe | [`docs/seguimiento-4/INFORME.md`](docs/seguimiento-4/INFORME.md) |
-| Demo | [`docs/seguimiento-4/DEMO_SCRIPT.md`](docs/seguimiento-4/DEMO_SCRIPT.md) |
+| Demo (sin caos) | [`docs/seguimiento-4/DEMO_SCRIPT.md`](docs/seguimiento-4/DEMO_SCRIPT.md) |
 | Manifiestos K8s AWS | [`k8s/aws/`](k8s/aws/) |
-| Chaos gate | [`.github/workflows/chaos-gate.yml`](.github/workflows/chaos-gate.yml) |
+| Chaos Gate CI | [`.github/workflows/chaos-gate.yml`](.github/workflows/chaos-gate.yml) · [run success](https://github.com/JarrisonLopez/sports-tournaments-api/actions/runs/44204457598) |
+
+**Chaos Gate** evalúa mocks/fixtures en GitHub Actions; **no** sustituye ni repite los experimentos reales en AWS/OCI/GCP.
 
 ```powershell
 npm test
 npm run build
 npm run chaos:rounds
-.\load\run-k6.ps1 -Round baseline
+npm run chaos:gate
 ```
 
-Versión SemVer del proyecto: **4.1.0** (`package.json`). El despliegue AWS remoto permanece **no verificado** hasta un `terraform apply` autorizado.
+Versión SemVer del proyecto: **4.2.0** (`package.json`). Candidato de release de cierre: **v4.2.0** ([`docs/seguimiento-4/RELEASE.md`](docs/seguimiento-4/RELEASE.md)) — sin tag/publicación hasta autorización.
 
 # Entrega 3 — API V3 individual (desplegada)
 
@@ -37,7 +42,7 @@ La Entrega 3 es **individual**. V1 y V2 siguen en el código. V3 **no** depende 
 
 La infraestructura GCP está **aplicada y operativa** en el proyecto `sports-tournaments-multicloud` (`us-central1`). El detalle de módulos vive en [`terraform/README.md`](terraform/README.md); el bucket de estado, en [`terraform/bootstrap/README.md`](terraform/bootstrap/README.md); la identidad de aprovisionamiento, en [`terraform/persistent/README.md`](terraform/persistent/README.md).
 
-“API V2” y “API V3” se refieren a los prefijos HTTP `/api/v2` y `/api/v3`. El SemVer del repositorio para Seguimiento #4 es **4.1.0**.
+“API V2” y “API V3” se refieren a los prefijos HTTP `/api/v2` y `/api/v3`. El SemVer del repositorio para el cierre del Seguimiento #4 es **4.2.0**.
 
 ## Endpoint V3
 
